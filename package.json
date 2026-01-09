@@ -1,0 +1,8 @@
+{
+  "name": "watchnow-scripts",
+  "version": "1.0.0",
+  "description": "Local scripts to fix webos cli",
+  "dependencies": {
+    "@webos-tools/cli": "^3.2.1"
+  }
+}
