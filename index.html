@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>OK Player</title>
+	<link rel="stylesheet" href="css/styles.css">
+	<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+	<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+
+	<!-- webOS Integration -->
+	<script src="webOSTVjs-1.2.10/webOSTV.js" charset="utf-8"></script>
+
+	<!-- Icons -->
+	<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+
+	<!-- Background Ambient Glow -->
+	<div class="ambient-glow"></div>
+
+	<div id="layout-container">
+		<!-- Sidebar -->
+		<aside id="main-sidebar">
+			<div class="sidebar-header">
+				<div class="logo">
+					<img src="assets/ok_logo.svg" alt="WatchNow Logo" class="sidebar-logo-img">
+				</div>
+			</div>
+
+			<nav class="sidebar-nav">
+				<div class="nav-item focusable auto-trigger" data-target="search" tabindex="0">
+					<span class="icon"><i data-lucide="search"></i></span>
+				</div>
+				<div class="nav-item focusable active auto-trigger" data-target="favorites" tabindex="0">
+					<span class="icon"><i data-lucide="star"></i></span>
+				</div>
+				<div class="nav-space"></div>
+				<div class="nav-item focusable auto-trigger" data-target="live" tabindex="0">
+					<!-- Default active -->
+					<span class="icon"><i data-lucide="tv"></i></span>
+				</div>
+				<div class="nav-item focusable auto-trigger" data-target="movies" tabindex="0">
+					<span class="icon"><i data-lucide="film"></i></span>
+				</div>
+				<div class="nav-item focusable auto-trigger" data-target="series" tabindex="0">
+					<span class="icon"><i data-lucide="clapperboard"></i></span>
+				</div>
+				<div class="nav-space"></div>
+				<div class="nav-item focusable auto-trigger" data-target="resources" tabindex="0">
+					<span class="icon"><i data-lucide="folder-kanban"></i></span>
+				</div>
+				<div class="nav-item focusable auto-trigger" data-target="settings" tabindex="0">
+					<span class="icon"><i data-lucide="settings"></i></span>
+				</div>
+			</nav>
+		</aside>
+
+		<!-- Main Content Area -->
+		<main id="main-content">
+
+			<!-- Loading Overlay -->
+			<div id="global-loader" class="loader-overlay" style="display:none;">
+				<div class="spinner"></div>
+				<p>Syncing Content...</p>
+				<p id="global-loader-stats" style="margin-top:10px; font-size:0.9em; opacity:0.8; color:#aaa;">
+					Initializing...</p>
+				<button id="global-cancel-btn" class="btn btn-text focusable"
+					style="margin-top:20px; border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 5px 20px;">Cancel</button>
+			</div>
+
+			<!-- Views -->
+
+			<!-- Search View -->
+			<section id="search" class="view-section">
+				<header class="section-header">
+					<h1>Search</h1>
+					<div class="search-bar-container">
+						<input type="text" id="global-search-input" class="focusable"
+							placeholder="Search movies, series, channels...">
+					</div>
+				</header>
+				<div id="search-results" class="content-rows"></div>
+			</section>
+
+			<!-- Favorites View -->
+			<section id="favorites" class="view-section">
+				<header class="section-header">
+					<h1>Favorites</h1>
+					<p class="favorites-hint">Press <span class="key-hint yellow">Yellow</span> button on remote to
+						add/remove favorites</p>
+				</header>
+				<div id="favorites-content">
+					<!-- Favorite Channels Section -->
+					<div id="fav-channels-section" class="favorites-section">
+						<h2 class="section-title"><i data-lucide="tv" class="inline-icon"></i> Favorite Channels</h2>
+						<div id="fav-channels-grid" class="favorites-grid"></div>
+					</div>
+					<!-- Favorite Movies Section -->
+					<div id="fav-movies-section" class="favorites-section">
+						<h2 class="section-title"><i data-lucide="film" class="inline-icon"></i> Favorite Movies</h2>
+						<div id="fav-movies-grid" class="favorites-grid"></div>
+					</div>
+					<!-- Favorite Series Section -->
+					<div id="fav-series-section" class="favorites-section">
+						<h2 class="section-title"><i data-lucide="clapperboard" class="inline-icon"></i> Favorite Series
+						</h2>
+						<div id="fav-series-grid" class="favorites-grid"></div>
+					</div>
+					<!-- Favorite Buckets Section -->
+					<div id="fav-buckets-section" class="favorites-section">
+						<h2 class="section-title"><i data-lucide="folder-kanban" class="inline-icon"></i> Favorite
+							Buckets</h2>
+						<div id="fav-buckets-grid" class="favorites-grid"></div>
+					</div>
+					<!-- Empty State -->
+					<div id="fav-empty-state" class="empty-state" style="display:none;">
+						<span class="empty-icon"><i data-lucide="star"></i></span>
+						<p>No favorites yet</p>
+						<p class="empty-hint">Press the Yellow button on your remote while hovering over a channel,
+							movie, or series to add it to favorites.</p>
+					</div>
+				</div>
+			</section>
+
+			<!-- Live TV View -->
+			<section id="live" class="view-section active">
+				<header class="section-header">
+					<h1>Live TV</h1>
+				</header>
+				<div class="content-rows" id="live-rows">
+					<!-- Rows injected here -->
+				</div>
+			</section>
+
+			<!-- Movies View -->
+			<section id="movies" class="view-section">
+				<header class="section-header">
+					<h1>Movies</h1>
+				</header>
+				<div class="content-rows" id="movies-rows">
+				</div>
+			</section>
+
+			<!-- Series View -->
+			<section id="series" class="view-section">
+				<header class="section-header">
+					<h1>Series</h1>
+				</header>
+				<div class="content-rows" id="series-rows">
+				</div>
+			</section>
+
+			<!-- Resources View (Playlist Manager) -->
+			<section id="resources" class="view-section">
+				<header class="section-header">
+					<h1>Playlist Resources</h1>
+					<button id="add-playlist-btn" class="btn btn-glass focusable"><i data-lucide="plus"></i> Add
+						Playlist</button>
+				</header>
+
+				<div class="resources-list" id="resources-list-container">
+					<!-- Playlist items will be injected here -->
+				</div>
+			</section>
+
+			<!-- Settings View -->
+			<section id="settings" class="view-section">
+				<h1>Settings</h1>
+				<div class="settings-container">
+					<div class="setting-item focusable" tabindex="0">
+						<div class="setting-info">
+							<span class="setting-label">Check Stream Status</span>
+							<span class="setting-description">Enable or disable automatic stream status checking</span>
+						</div>
+						<div class="toggle-switch" id="toggle-link-status">
+							<div class="toggle-knob"></div>
+						</div>
+					</div>
+					<div class="setting-item focusable" tabindex="0">
+						<div class="setting-info">
+							<span class="setting-label">Layout Mode</span>
+							<span class="setting-description" id="layout-mode-desc">Current: Full Cards</span>
+						</div>
+						<button id="layout-toggle-btn" class="btn btn-glass">Switch Layout</button>
+					</div>
+					<div class="setting-item focusable" tabindex="0">
+						<div class="setting-info">
+							<span class="setting-label">Clear Data</span>
+							<span class="setting-description">Reset app and remove all playlists</span>
+						</div>
+						<button id="reset-app-btn" class="btn btn-danger">Reset App</button>
+					</div>
+				</div>
+			</section>
+
+		</main>
+	</div>
+
+	<!-- Modals -->
+
+	<!-- Add/Edit Playlist Modal -->
+	<div id="playlist-modal" class="modal-overlay">
+		<div class="modal-content glass-panel">
+			<h3 id="playlist-modal-title">Add New Playlist</h3>
+			<input type="hidden" id="edit-playlist-id" value="">
+			<div class="input-group">
+				<label>Name</label>
+				<input type="text" id="new-playlist-name" class="focusable modal-input"
+					placeholder="e.g. My Premium SUB">
+			</div>
+			<div class="modal-tabs">
+				<button class="modal-tab active" data-tab="m3u">M3U List</button>
+				<button class="modal-tab" data-tab="xtream">Xtream Codes</button>
+			</div>
+
+			<div id="tab-content-m3u" class="tab-content active">
+				<div class="input-group">
+					<label>M3U8 URL</label>
+					<input type="text" id="new-playlist-url" class="focusable modal-input"
+						placeholder="http://example.com/playlist.m3u">
+				</div>
+				<div class="input-group" id="file-import-group" style="text-align:center;">
+					<span style="font-size:12px; opacity:0.7;">OR</span>
+					<label for="local-file-importer" class="btn btn-glass focusable"
+						style="display:inline-block; margin-top:5px;">Select Local File</label>
+					<input type="file" id="local-file-importer" accept=".m3u,.m3u8" style="display:none;">
+				</div>
+			</div>
+
+			<div id="tab-content-xtream" class="tab-content">
+				<div class="input-group">
+					<label>Server URL</label>
+					<input type="text" id="xtream-host" class="focusable modal-input"
+						placeholder="http://domain.com:port">
+				</div>
+				<div class="input-group">
+					<label>Username</label>
+					<input type="text" id="xtream-user" class="focusable modal-input" placeholder="username">
+				</div>
+				<div class="input-group">
+					<label>Password</label>
+					<input type="password" id="xtream-pass" class="focusable modal-input" placeholder="password">
+				</div>
+			</div>
+			<div class="modal-actions">
+				<button id="cancel-playlist-btn" class="btn btn-text focusable">Cancel</button>
+				<button id="save-playlist-btn" class="btn btn-primary focusable">Save & Sync</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Player Overlay -->
+	<div id="player-overlay">
+		<div class="tv-static"></div>
+		<!-- Logo Watermark -->
+		<button id="close-player-btn" class="focusable" tabindex="0"><i data-lucide="x"></i></button>
+		<video id="video-player" controls autoplay poster="assets/ok_video_poster.jpg"></video>
+
+		<!-- Controls Gradient Overlay -->
+		<!-- <div class="player-controls-overlay"></div> -->
+
+		<!-- Next Channel Preview Card -->
+		<div id="next-channel-preview" class="channel-preview-card">
+			<div class="preview-label">Next Channel</div>
+			<div class="preview-content">
+				<div class="preview-info">
+					<h3 class="preview-title">Channel Name</h3>
+					<div class="preview-meta">Press ▼ to switch</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Scripts -->
+	<style>
+		.modal-tabs {
+			display: flex;
+			gap: 10px;
+			margin-bottom: 20px;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		}
+
+		.modal-tab {
+			background: none;
+			border: none;
+			color: rgba(255, 255, 255, 0.6);
+			padding: 10px 15px;
+			cursor: pointer;
+			border-bottom: 2px solid transparent;
+			transition: all 0.2s;
+		}
+
+		.modal-tab.active {
+			color: #fff;
+			border-bottom-color: var(--primary-color);
+		}
+
+		.tab-content {
+			display: none;
+		}
+
+		.tab-content.active {
+			display: block;
+		}
+	</style>
+	<script src="js/parser.js"></script>
+	<script src="js/xtream-client.js"></script>
+	<script src="js/navigation.js"></script>
+	<script src="js/player.js"></script>
+	<script src="js/app.js"></script>
+</body>
+
+</html>
