@@ -1,9 +1,4 @@
 /**
- * VideoJS Player Module
- * Integration of Video.js player for advanced playback features (Subtitles, Audio Tracks).
- */
-
-/**
  * VideoJS Player State
  */
 const VideoJSPlayerState = {
@@ -179,7 +174,7 @@ const VideoJSStreamUtils = {
             return originalUrl.replace(/\.ts$/i, '.m3u8');
         }
 
-        // Similar logic to Clappr/Native
+        // Similar logic to Native
         // For VideoJS, it handles m3u8 well.
         if (type === 'live' || type === 'channels') {
             // Ensure .m3u8 extension if missing for live
@@ -218,98 +213,6 @@ window.VideoJSPlayer = {
             newParent.appendChild(container);
         }
     },
-    // Track Management
-    getAudioTracks: () => {
-        if (!VideoJSPlayerState.player) return [];
-        const tracks = VideoJSPlayerState.player.audioTracks();
-        const result = [];
-        for (let i = 0; i < tracks.length; i++) {
-            result.push({
-                index: i,
-                label: tracks[i].label || tracks[i].language || `Audio ${i + 1}`,
-                enabled: tracks[i].enabled
-            });
-        }
-        return result;
-    },
-    setAudioTrack: (index) => {
-        if (!VideoJSPlayerState.player) return;
-        const tracks = VideoJSPlayerState.player.audioTracks();
-        for (let i = 0; i < tracks.length; i++) {
-            tracks[i].enabled = (i === index);
-        }
-    },
-    getSubtitleTracks: () => {
-        if (!VideoJSPlayerState.player) return [];
-        const tracks = VideoJSPlayerState.player.textTracks();
-        const result = [];
-        for (let i = 0; i < tracks.length; i++) {
-            if (tracks[i].kind === 'subtitles' || tracks[i].kind === 'captions') {
-                result.push({
-                    index: i, // Note: This is index in full list, handle carefully
-                    label: tracks[i].label || tracks[i].language || `Subtitle ${i + 1}`,
-                    mode: tracks[i].mode
-                });
-            }
-        }
-        return result;
-    },
-    setSubtitleTrack: (index) => {
-        if (!VideoJSPlayerState.player) return;
-        const tracks = VideoJSPlayerState.player.textTracks();
-        // Index passed must be the index in the full list provided by getSubtitleTracks? 
-        // No, let's look up by exact match or just pass the real index.
-        // For simplicity, we assume the index passed matches the track's index in the `tracks` list if we iterated correctly.
-        // BUT we filtered in getSubtitleTracks. So we should probably pass the track object or exact index.
-        // Let's iterate and find the one that matches our logic or just accept "real" index.
-
-        // Revised Strategy: Just iterate all and set.
-        // But wait, 'index' from getSubtitleTracks (filtered) != 'index' in textTracks (all).
-        // Let's assume the UI sends back the index from the filtered list.
-
-        let filteredCount = 0;
-        for (let i = 0; i < tracks.length; i++) {
-            if (tracks[i].kind === 'subtitles' || tracks[i].kind === 'captions') {
-                if (filteredCount === index) {
-                    tracks[i].mode = 'showing';
-                } else {
-                    tracks[i].mode = 'hidden';
-                }
-                filteredCount++;
-            }
-        }
-
-        if (index === -1) {
-            // Off
-            for (let i = 0; i < tracks.length; i++) {
-                if (tracks[i].kind === 'subtitles' || tracks[i].kind === 'captions') {
-                    tracks[i].mode = 'hidden';
-                }
-            }
-        }
-    },
-    // Register callback for metadata loaded (or tracks interaction)
-    onTracksChanged: (callback) => {
-        if (!VideoJSPlayerState.player) return;
-
-        // Listen to various events that might change tracks
-        const events = ['loadedmetadata', 'audiochannelschange', 'texttrackchange'];
-        events.forEach(evt => {
-            VideoJSPlayerState.player.on(evt, callback);
-        });
-
-        // Also AudioTrackList change events
-        if (VideoJSPlayerState.player.audioTracks()) {
-            VideoJSPlayerState.player.audioTracks().on('change', callback);
-            VideoJSPlayerState.player.audioTracks().on('addtrack', callback);
-            VideoJSPlayerState.player.audioTracks().on('removetrack', callback);
-        }
-        if (VideoJSPlayerState.player.textTracks()) {
-            VideoJSPlayerState.player.textTracks().on('change', callback);
-            VideoJSPlayerState.player.textTracks().on('addtrack', callback);
-            VideoJSPlayerState.player.textTracks().on('removetrack', callback);
-        }
-    }
 };
 
 console.log('VideoJS Player Module Loaded');

@@ -1,17 +1,11 @@
 /**
  * Player Module
  * Handles all video playback using Video.js, channel navigation, and player controls.
- * Video.js provides native support for HLS, audio tracks, and subtitles.
- */
-
-/**
- * Centralized Player State Object
- * Single source of truth for all player-related state.
+ * Video.js.
  */
 const PlayerState = {
     // Media engine instances
-    hls: null,      // Hls.js instance
-    mpegts: null,   // mpegts.js instance
+    // VideoJS manages its own instances internally in VideoJSPlayerState
 
     // Player display mode
     mode: {
@@ -37,26 +31,14 @@ const PlayerState = {
 
     // Helper methods for common state operations
     reset() {
-        this.destroyEngines();
+
         this.mode.embedded = false;
         this.mode.fullScreen = false;
         this.clearTimeouts();
         this.resetChannelNav();
     },
 
-    destroyEngines() {
-        if (this.hls) {
-            this.hls.destroy();
-            this.hls = null;
-        }
-        if (this.mpegts) {
-            this.mpegts.pause();
-            this.mpegts.unload();
-            this.mpegts.detachMediaElement();
-            this.mpegts.destroy();
-            this.mpegts = null;
-        }
-    },
+
 
     clearTimeouts() {
         if (this.timeouts.preview) {
@@ -82,7 +64,7 @@ const PlayerState = {
  * Note: nestedContainer uses a getter since it's dynamically created.
  */
 const PlayerDOM = {
-    videoElement: null,
+
     overlay: null,
     previewCard: null,
     closeBtn: null,
@@ -95,7 +77,7 @@ const PlayerDOM = {
 
     // Initialize all DOM references
     init() {
-        this.videoElement = document.getElementById('video-player');
+
         this.overlay = document.getElementById('player-overlay');
         this.previewCard = document.getElementById('next-channel-preview');
         this.closeBtn = document.getElementById('close-player-btn');
@@ -108,33 +90,7 @@ const PlayerDOM = {
 /**
  * Setup native video element event listeners
  */
-function setupVideoEvents() {
-    const video = PlayerDOM.videoElement;
-    if (!video) return;
 
-    const setLoaderState = (isLoading) => {
-        if (isLoading) {
-            PlayerDOM.overlay?.classList.add('loading');
-            if (PlayerDOM.nestedContainer) PlayerDOM.nestedContainer.classList.add('loading');
-        } else {
-            PlayerDOM.overlay?.classList.remove('loading');
-            if (PlayerDOM.nestedContainer) PlayerDOM.nestedContainer.classList.remove('loading');
-        }
-    };
-
-    video.addEventListener('waiting', () => setLoaderState(true));
-    video.addEventListener('playing', () => setLoaderState(false));
-    video.addEventListener('loadstart', () => setLoaderState(true));
-    video.addEventListener('canplay', () => setLoaderState(false));
-    video.addEventListener('error', (e) => {
-        setLoaderState(false);
-        console.error('Video Element Error:', video.error);
-    });
-
-    video.addEventListener('loadedmetadata', () => {
-        console.log(`Media loaded - Resolution: ${video.videoWidth}x${video.videoHeight}`);
-    });
-}
 
 /**
  * Setup player basic listeners
@@ -147,7 +103,7 @@ window.setupPlayer = function () {
     PlayerDOM.init();
 
     // Setup Video Events
-    setupVideoEvents();
+    // Setup Video Events - Removed (Handled by VideoJS)
 
     // Close button listener
     if (PlayerDOM.closeBtn) {
@@ -295,24 +251,15 @@ const StreamUrlUtils = {
  * Main playback function
  */
 async function playMedia(item, type = 'unknown') {
-    const video = PlayerDOM.videoElement;
-    const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined';
-    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined';
-
-    if (!useClappr && !useVideoJS && !video) {
-        console.error('Video element not found');
-        return;
-    }
-
     // Determine the parent element for the player
     let playerParent = PlayerDOM.overlay;
 
+    // Always use VideoJS
+    const useVideoJS = true;
+
     // Check if we should use embedded mode (nested layout)
-    // Check if we should use embedded mode (nested layout)
-    // For native HTML5 player: embedded mode only for live TV
-    // For Clappr/VideoJS player: embedded mode for ALL content types in nested layout
-    const useEmbeddedMode = appSettings.layoutMode === 'nested' && PlayerDOM.nestedContainer &&
-        (type === 'live' || useClappr || useVideoJS);
+    // VideoJS player: embedded mode for ALL content types in nested layout
+    const useEmbeddedMode = appSettings.layoutMode === 'nested' && PlayerDOM.nestedContainer;
 
     // Logic for Embedded vs Full Screen
     if (useEmbeddedMode) {
@@ -326,11 +273,6 @@ async function playMedia(item, type = 'unknown') {
         if (placeholder) placeholder.style.display = 'none';
         PlayerDOM.nestedContainer.classList.add('video-playing');
 
-        // Move video element to nested container (for HTML5 player)
-        if (!useClappr && !useVideoJS && video && video.parentElement !== PlayerDOM.nestedContainer) {
-            PlayerDOM.nestedContainer.appendChild(video);
-        }
-
         // Hide overlay elements if they were visible
         PlayerDOM.overlay.classList.remove('visible');
         PlayerDOM.overlay.classList.remove('video-playing');
@@ -338,19 +280,13 @@ async function playMedia(item, type = 'unknown') {
         // Update Info Section
         updateNestedInfo(item);
     } else {
-        // Standard Full Screen Mode (Cards layout or HTML5 player with movies/series)
+        // Standard Full Screen Mode
         PlayerState.mode.embedded = false;
         PlayerState.mode.fullScreen = true;
         playerParent = PlayerDOM.overlay;
 
         // Add video-playing class to player overlay
         PlayerDOM.overlay.classList.add('video-playing');
-
-        // Move video element back to overlay if needed (for HTML5 player)
-        if (!useClappr && !useVideoJS && video && video.parentElement !== PlayerDOM.overlay) {
-            PlayerDOM.overlay.insertBefore(video, PlayerDOM.previewCard);
-        }
-
         PlayerDOM.overlay.classList.add('visible');
     }
 
@@ -365,54 +301,25 @@ async function playMedia(item, type = 'unknown') {
     PlayerDOM.overlay.classList.add('loading');
     if (PlayerDOM.nestedContainer) PlayerDOM.nestedContainer.classList.add('loading');
 
-    const originalUrl = item.url;
-    const logLabel = useClappr ? 'Clappr' : (useVideoJS ? 'VideoJS' : 'Native');
-    console.log(`=== Starting ${logLabel} Playback ===`);
+    console.log(`=== Starting VideoJS Playback ===`);
     console.log('Type:', type);
-    console.log('Original URL:', originalUrl);
+    console.log('URL:', item.url);
     console.log('Player Parent:', playerParent === PlayerDOM.overlay ? 'Overlay (Fullscreen)' : 'Nested Container (Embedded)');
 
-    // Play the item using the appropriate player
-    if (useClappr) {
-        // Use Clappr player
-        playClapprDirect(item, playerParent, type);
-    } else if (useVideoJS) {
-        // Use VideoJS player
-
-        // Explicitly hide native video element to prevent confusion or error events
-        if (video) {
-            video.pause();
-            video.removeAttribute('src'); // Completely remove src
-            video.load(); // Force reset
-            video.style.display = 'none';
-        }
-
+    // Play with VideoJS
+    if (typeof VideoJSPlayer !== 'undefined') {
         VideoJSPlayer.play(item, type, playerParent);
     } else {
-        // Use native HTML5 player
-        playChannelDirect(item);
-        if (video) video.focus();
+        console.error("VideoJSPlayer module not loaded!");
     }
 }
 
 function switchPlayerToFullScreen() {
     if (!PlayerState.mode.embedded) return;
 
-    const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined' && ClapprPlayer.isActive();
-    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive();
-
-    if (useClappr) {
-        // Move Clappr player to overlay
-        ClapprPlayer.move(PlayerDOM.overlay);
-    } else if (useVideoJS) {
+    if (typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive()) {
         // Move VideoJS player into overlay
         VideoJSPlayer.move(PlayerDOM.overlay);
-    } else {
-        const video = PlayerDOM.videoElement;
-        if (!video) return;
-        // Move video element back to overlay
-        PlayerDOM.overlay.insertBefore(video, PlayerDOM.previewCard);
-        video.focus();
     }
 
     PlayerDOM.overlay.classList.add('visible');
@@ -431,20 +338,9 @@ function switchPlayerToEmbedded() {
         return;
     }
 
-    const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined' && ClapprPlayer.isActive();
-    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive();
-
-    if (useClappr) {
-        // Move Clappr player to nested container
-        ClapprPlayer.move(PlayerDOM.nestedContainer);
-    } else if (useVideoJS) {
+    if (typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive()) {
         // Move VideoJS player to nested container
         VideoJSPlayer.move(PlayerDOM.nestedContainer);
-    } else {
-        const video = PlayerDOM.videoElement;
-        if (!video) return;
-        // Move video element to embedded
-        PlayerDOM.nestedContainer.appendChild(video);
     }
 
     PlayerDOM.overlay.classList.remove('visible');
@@ -489,64 +385,13 @@ function switchPlayerToEmbedded() {
  * Centralized cleanup function for stopping all video playback.
  */
 function cleanupPlayback() {
-    // Cleanup native HTML5 player
-    const video = PlayerDOM.videoElement;
-    if (video) {
-        video.pause();
-        video.src = "";
-        video.load();
-    }
-    PlayerState.destroyEngines();
-
-    // Cleanup Clappr player if active
-    if (typeof ClapprPlayer !== 'undefined' && ClapprPlayer.isActive()) {
-        ClapprPlayer.stop();
-    }
-
     // Cleanup VideoJS player if active
     if (typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive()) {
         VideoJSPlayer.destroy();
     }
 }
 
-/**
- * Plays media using Clappr player directly
- * @param {Object} item - Media item to play
- * @param {HTMLElement} parentElement - Parent element for the player
- * @param {string} type - Content type (live, movies, series)
- */
-function playClapprDirect(item, parentElement, type = 'unknown') {
-    if (typeof ClapprPlayer === 'undefined') {
-        console.error('ClapprPlayer not available, falling back to native player');
-        playChannelDirect(item);
-        return;
-    }
 
-    // Stop any existing Clappr playback
-    ClapprPlayer.stop();
-
-    // Hide the native video element
-    const video = PlayerDOM.videoElement;
-    if (video) {
-        video.style.display = 'none';
-        video.pause();
-        video.src = "";
-    }
-
-    // Determine the content type for Clappr
-    const contentType = type || (PlayerState.channelNav.isActive ? 'live' : 'unknown');
-
-    console.log(`Clappr: Playing ${contentType} content in ${parentElement === PlayerDOM.overlay ? 'overlay' : 'nested container'}`);
-
-    // Start Clappr playback
-    const success = ClapprPlayer.play(item, contentType, parentElement);
-
-    if (!success) {
-        console.warn('Clappr playback failed, falling back to native player');
-        if (video) video.style.display = '';
-        playChannelDirect(item);
-    }
-}
 
 function closePlayer() {
     // If in Full Screen & Nested Mode with channel navigation active -> Go back to Embedded
@@ -572,18 +417,8 @@ function closePlayer() {
         const placeholder = PlayerDOM.nestedContainer.querySelector('.placeholder-icon');
         if (placeholder) placeholder.style.display = 'flex';
 
-        // Move video element back to overlay to reset state
-        const video = PlayerDOM.videoElement;
-        if (video) {
-            video.style.display = ''; // Restore visibility
-            PlayerDOM.overlay.insertBefore(video, PlayerDOM.previewCard);
-        }
-    }
 
-    // Restore native video visibility (in case Clappr was used)
-    const video = PlayerDOM.videoElement;
-    if (video) {
-        video.style.display = '';
+
     }
 
     nav.focusFirst(); // Return focus
@@ -745,79 +580,14 @@ function switchChannel(direction) {
     PlayerState.channelNav.currentIndex = calculateChannelIndex(direction);
     PlayerState.channelNav.currentChannel = targetChannel;
 
-    // Determine player type
-    const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined';
-    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined';
-
-    // Play the target channel using appropriate player
+    // Play the target channel using VideoJS
     setTimeout(() => {
-        if (useClappr) {
-            // Determine parent for Clappr
-            const playerParent = PlayerState.mode.embedded ? PlayerDOM.nestedContainer : PlayerDOM.overlay;
-            playClapprDirect(targetChannel, playerParent, 'live');
-        } else if (useVideoJS) {
+        if (typeof VideoJSPlayer !== 'undefined') {
             const playerParent = PlayerState.mode.embedded ? PlayerDOM.nestedContainer : PlayerDOM.overlay;
             VideoJSPlayer.play(targetChannel, 'live', playerParent);
-        } else {
-            playChannelDirect(targetChannel);
         }
         PlayerState.channelNav.isTransitioning = false;
     }, 300);
-}
-
-/**
- * Plays a channel directly (used for channel switching)
- */
-function playChannelDirect(channel) {
-    const video = PlayerDOM.videoElement;
-    if (!video) return;
-
-    // Clean up existing engines
-    PlayerState.destroyEngines();
-
-    const playbackUrl = StreamUrlUtils.getBestUrl(channel.url);
-    console.log('Playing channel directly:', playbackUrl);
-
-    // 1. Check for HLS (.m3u8)
-    if (playbackUrl.includes('.m3u8') && typeof Hls !== 'undefined') {
-        if (Hls.isSupported()) {
-            const hls = new Hls();
-            hls.loadSource(playbackUrl);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                video.play().catch(e => console.error("HLS playback failed", e));
-            });
-            PlayerState.hls = hls;
-            return;
-        }
-    }
-
-    // 2. Check for HTTP-TS (.ts)
-    if (playbackUrl.includes('.ts') && typeof mpegts !== 'undefined') {
-        if (mpegts.getFeatureList().mseLivePlayback) {
-            const player = mpegts.createPlayer({
-                type: 'mse',
-                isLive: true,
-                url: playbackUrl
-            });
-            player.attachMediaElement(video);
-            player.load();
-            player.play().catch(e => console.error("MPEG-TS playback failed", e));
-            PlayerState.mpegts = player;
-            return;
-        }
-    }
-
-    // 3. Fallback to native video src
-    video.src = playbackUrl;
-    video.play().catch(e => {
-        console.warn('Native channel playback error:', e);
-        // Try original URL if transformed one fails
-        if (playbackUrl !== channel.url) {
-            video.src = channel.url;
-            video.play().catch(err => console.error('Fallback failed:', err));
-        }
-    });
 }
 
 /**
