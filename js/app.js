@@ -1066,6 +1066,7 @@ async function handleNestedMediaClick(item, type, cardElement) {
     const playContent = (streamUrl, containerId = '#nested-vod-player-container') => {
         const container = panel.querySelector(containerId);
         const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined';
+        const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined';
 
         // Reset controls
         const controlsPanel = panel.querySelector('#track-controls');
@@ -1092,6 +1093,30 @@ async function handleNestedMediaClick(item, type, cardElement) {
 
             // Update track controls for Clappr
             controlsPanel.innerHTML = '<span style="opacity:0.5;">Track selection available in player controls</span>';
+
+        } else if (useVideoJS) {
+            // Use VideoJS player
+            container.innerHTML = ''; // Clear native stuff
+
+            // Stop/Destroy active engine to be safe
+            if (VideoJSPlayer.isActive()) {
+                VideoJSPlayer.destroy();
+            }
+
+            const playItem = { url: streamUrl, title: item.title };
+            // Play using VideoJS, telling it to mount in our container
+            VideoJSPlayer.play(playItem, type, container);
+
+            // Update track controls for VideoJS
+            controlsPanel.innerHTML = '<span style="opacity:0.5;">Loading tracks...</span>';
+
+            // Setup listeners for track updates
+            VideoJSPlayer.onTracksChanged(() => {
+                updateVideoJSTrackControls(controlsPanel);
+            });
+
+            // Also update immediately in case metadata is somehow already there (unlikely but safe)
+            setTimeout(() => updateVideoJSTrackControls(controlsPanel), 1000);
 
         } else {
             // Use native HTML5 player
@@ -1318,6 +1343,68 @@ function updateTrackControls(source, container, isNative = false) {
         });
     } else {
         container.innerHTML = '<span style="opacity:0.5;">No selectable tracks found.</span>';
+    }
+}
+
+function updateVideoJSTrackControls(container) {
+    if (typeof VideoJSPlayer === 'undefined') return;
+
+    const audioTracks = VideoJSPlayer.getAudioTracks();
+    const subTracks = VideoJSPlayer.getSubtitleTracks();
+
+    let html = '';
+
+    // Audio Tracks
+    if (audioTracks.length > 0) {
+        // Find enabled track
+        let activeAudioIndex = audioTracks.findIndex(t => t.enabled);
+        if (activeAudioIndex === -1 && audioTracks.length > 0) activeAudioIndex = 0;
+
+        html += `<div class="track-group"><label>Audio</label><select class="track-select audio-track">`;
+        audioTracks.forEach((t, i) => {
+            // We use 'i' which corresponds to the track index in the list returned? 
+            // specific setAudioTrack implementation uses Real index if I passed it?
+            // Let's check videojs-player.js setAudioTrack implementation again.
+            // It iterates all tracks and checks `i === index`. So it expects REAL index.
+            // getAudioTracks returned objects with `index` property which is real index.
+            // BUT `getAudioTracks` returns a filter/map of the list. `player.audioTracks()` is a list.
+            // In `getAudioTracks`: `for (let i = 0; i < tracks.length; i++)`. It iterates ALL.
+            // So the array returned matches the real list order.
+            // So `i` (loop index) IS the real index.
+            html += `<option value="${i}" ${t.enabled ? 'selected' : ''}>${t.label}</option>`;
+        });
+        html += `</select></div>`;
+    }
+
+    // Subtitle Tracks
+    if (subTracks.length > 0) {
+        // Find showing track
+        // getSubtitleTracks returns filtered list.
+        // setSubtitleTrack expects FILTERED index (0, 1... of the subtitles only).
+        let activeSubIndex = subTracks.findIndex(t => t.mode === 'showing');
+
+        html += `<div class="track-group"><label>Subtitles</label><select class="track-select sub-track">`;
+        html += `<option value="-1" ${activeSubIndex === -1 ? 'selected' : ''}>Off</option>`;
+        subTracks.forEach((t, i) => {
+            html += `<option value="${i}" ${t.mode === 'showing' ? 'selected' : ''}>${t.label}</option>`;
+        });
+        html += `</select></div>`;
+    }
+
+    if (html) {
+        container.innerHTML = html;
+
+        container.querySelector('.audio-track')?.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.value);
+            VideoJSPlayer.setAudioTrack(idx);
+        });
+
+        container.querySelector('.sub-track')?.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.value);
+            VideoJSPlayer.setSubtitleTrack(idx);
+        });
+    } else {
+        container.innerHTML = '<span style="opacity:0.5;">No selectable tracks found (VideoJS).</span>';
     }
 }
 
@@ -2149,26 +2236,49 @@ function setupSettings() {
     const playerTypeLabel = document.getElementById('player-type-label');
 
     if (playerTypeToggle && playerTypeLabel) {
-        // Initialize toggle state based on settings
-        if (appSettings.playerType === 'clappr') {
-            playerTypeToggle.classList.add('active');
-            playerTypeLabel.textContent = 'Clappr';
-        } else {
-            playerTypeLabel.textContent = 'HTML5';
-        }
+        // Initialize toggle state
+        const updatePlayerTypeUI = () => {
+            if (appSettings.playerType === 'clappr') {
+                playerTypeToggle.classList.add('active');
+                playerTypeToggle.classList.remove('videojs-active');
+                playerTypeLabel.textContent = 'Clappr';
+            } else if (appSettings.playerType === 'videojs') {
+                playerTypeToggle.classList.add('active');
+                playerTypeToggle.classList.add('videojs-active');
+                playerTypeLabel.textContent = 'VideoJS';
+            } else {
+                playerTypeToggle.classList.remove('active');
+                playerTypeToggle.classList.remove('videojs-active');
+                appSettings.playerType = 'html5'; // Ensure valid default
+                playerTypeLabel.textContent = 'HTML5';
+            }
+        };
+
+        updatePlayerTypeUI();
 
         playerTypeToggle.addEventListener('click', () => {
-            appSettings.playerType = appSettings.playerType === 'html5' ? 'clappr' : 'html5';
-            playerTypeToggle.classList.toggle('active', appSettings.playerType === 'clappr');
-            playerTypeLabel.textContent = appSettings.playerType === 'clappr' ? 'Clappr' : 'HTML5';
+            // Cycle: html5 -> clappr -> videojs -> html5
+            if (appSettings.playerType === 'html5') {
+                appSettings.playerType = 'clappr';
+            } else if (appSettings.playerType === 'clappr') {
+                appSettings.playerType = 'videojs';
+            } else {
+                appSettings.playerType = 'html5';
+            }
+
+            updatePlayerTypeUI();
             saveAppSettings();
 
             // Stop any active player when switching
             if (typeof cleanupPlayback === 'function') {
                 cleanupPlayback();
             }
+            // Additional Force Stop for Modules
             if (typeof ClapprPlayer !== 'undefined' && ClapprPlayer.stop) {
                 ClapprPlayer.stop();
+            }
+            if (typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.destroy) {
+                VideoJSPlayer.destroy();
             }
 
             console.log(`Player type changed to: ${appSettings.playerType}`);

@@ -297,8 +297,9 @@ const StreamUrlUtils = {
 async function playMedia(item, type = 'unknown') {
     const video = PlayerDOM.videoElement;
     const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined';
+    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined';
 
-    if (!useClappr && !video) {
+    if (!useClappr && !useVideoJS && !video) {
         console.error('Video element not found');
         return;
     }
@@ -307,10 +308,11 @@ async function playMedia(item, type = 'unknown') {
     let playerParent = PlayerDOM.overlay;
 
     // Check if we should use embedded mode (nested layout)
+    // Check if we should use embedded mode (nested layout)
     // For native HTML5 player: embedded mode only for live TV
-    // For Clappr player: embedded mode for ALL content types in nested layout
+    // For Clappr/VideoJS player: embedded mode for ALL content types in nested layout
     const useEmbeddedMode = appSettings.layoutMode === 'nested' && PlayerDOM.nestedContainer &&
-        (type === 'live' || useClappr);
+        (type === 'live' || useClappr || useVideoJS);
 
     // Logic for Embedded vs Full Screen
     if (useEmbeddedMode) {
@@ -325,7 +327,7 @@ async function playMedia(item, type = 'unknown') {
         PlayerDOM.nestedContainer.classList.add('video-playing');
 
         // Move video element to nested container (for HTML5 player)
-        if (!useClappr && video && video.parentElement !== PlayerDOM.nestedContainer) {
+        if (!useClappr && !useVideoJS && video && video.parentElement !== PlayerDOM.nestedContainer) {
             PlayerDOM.nestedContainer.appendChild(video);
         }
 
@@ -345,7 +347,7 @@ async function playMedia(item, type = 'unknown') {
         PlayerDOM.overlay.classList.add('video-playing');
 
         // Move video element back to overlay if needed (for HTML5 player)
-        if (!useClappr && video && video.parentElement !== PlayerDOM.overlay) {
+        if (!useClappr && !useVideoJS && video && video.parentElement !== PlayerDOM.overlay) {
             PlayerDOM.overlay.insertBefore(video, PlayerDOM.previewCard);
         }
 
@@ -364,15 +366,28 @@ async function playMedia(item, type = 'unknown') {
     if (PlayerDOM.nestedContainer) PlayerDOM.nestedContainer.classList.add('loading');
 
     const originalUrl = item.url;
-    console.log(`=== Starting ${useClappr ? 'Clappr' : 'Native'} Playback ===`);
+    const logLabel = useClappr ? 'Clappr' : (useVideoJS ? 'VideoJS' : 'Native');
+    console.log(`=== Starting ${logLabel} Playback ===`);
     console.log('Type:', type);
     console.log('Original URL:', originalUrl);
     console.log('Player Parent:', playerParent === PlayerDOM.overlay ? 'Overlay (Fullscreen)' : 'Nested Container (Embedded)');
 
     // Play the item using the appropriate player
     if (useClappr) {
-        // Use Clappr player for all content types
+        // Use Clappr player
         playClapprDirect(item, playerParent, type);
+    } else if (useVideoJS) {
+        // Use VideoJS player
+
+        // Explicitly hide native video element to prevent confusion or error events
+        if (video) {
+            video.pause();
+            video.removeAttribute('src'); // Completely remove src
+            video.load(); // Force reset
+            video.style.display = 'none';
+        }
+
+        VideoJSPlayer.play(item, type, playerParent);
     } else {
         // Use native HTML5 player
         playChannelDirect(item);
@@ -384,10 +399,14 @@ function switchPlayerToFullScreen() {
     if (!PlayerState.mode.embedded) return;
 
     const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined' && ClapprPlayer.isActive();
+    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive();
 
     if (useClappr) {
         // Move Clappr player to overlay
         ClapprPlayer.move(PlayerDOM.overlay);
+    } else if (useVideoJS) {
+        // Move VideoJS player into overlay
+        VideoJSPlayer.move(PlayerDOM.overlay);
     } else {
         const video = PlayerDOM.videoElement;
         if (!video) return;
@@ -413,10 +432,14 @@ function switchPlayerToEmbedded() {
     }
 
     const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined' && ClapprPlayer.isActive();
+    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive();
 
     if (useClappr) {
         // Move Clappr player to nested container
         ClapprPlayer.move(PlayerDOM.nestedContainer);
+    } else if (useVideoJS) {
+        // Move VideoJS player to nested container
+        VideoJSPlayer.move(PlayerDOM.nestedContainer);
     } else {
         const video = PlayerDOM.videoElement;
         if (!video) return;
@@ -478,6 +501,11 @@ function cleanupPlayback() {
     // Cleanup Clappr player if active
     if (typeof ClapprPlayer !== 'undefined' && ClapprPlayer.isActive()) {
         ClapprPlayer.stop();
+    }
+
+    // Cleanup VideoJS player if active
+    if (typeof VideoJSPlayer !== 'undefined' && VideoJSPlayer.isActive()) {
+        VideoJSPlayer.destroy();
     }
 }
 
@@ -719,6 +747,7 @@ function switchChannel(direction) {
 
     // Determine player type
     const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined';
+    const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined';
 
     // Play the target channel using appropriate player
     setTimeout(() => {
@@ -726,6 +755,9 @@ function switchChannel(direction) {
             // Determine parent for Clappr
             const playerParent = PlayerState.mode.embedded ? PlayerDOM.nestedContainer : PlayerDOM.overlay;
             playClapprDirect(targetChannel, playerParent, 'live');
+        } else if (useVideoJS) {
+            const playerParent = PlayerState.mode.embedded ? PlayerDOM.nestedContainer : PlayerDOM.overlay;
+            VideoJSPlayer.play(targetChannel, 'live', playerParent);
         } else {
             playChannelDirect(targetChannel);
         }

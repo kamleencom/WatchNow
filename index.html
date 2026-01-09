@@ -11,6 +11,10 @@
 	<!-- Clappr Player -->
 	<script src="https://cdn.jsdelivr.net/npm/@clappr/player@latest/dist/clappr.min.js"></script>
 
+	<!-- Video.js Player -->
+	<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+	<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+
 	<!-- webOS Integration -->
 	<script src="webOSTVjs-1.2.10/webOSTV.js" charset="utf-8"></script>
 
@@ -191,8 +195,7 @@
 					<div class="setting-item focusable" tabindex="0">
 						<div class="setting-info">
 							<span class="setting-label">Video Player Engine</span>
-							<span class="setting-description">Switch between HTML5 native player and Clappr
-								player</span>
+							<span class="setting-description">Select player engine: HTML5, Clappr, or VideoJS</span>
 						</div>
 						<div class="toggle-switch" id="toggle-player-type">
 							<div class="toggle-knob"></div>
@@ -324,6 +327,7 @@
 	<script src="js/navigation.js"></script>
 	<script src="js/player.js"></script>
 	<script src="js/clappr-player.js"></script>
+	<script src="js/videojs-player.js"></script>
 	<script src="js/app.js"></script>
 </body>
 
