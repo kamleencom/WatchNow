@@ -32,7 +32,8 @@ let linkStatusCache = {};
 // App Settings
 const appSettings = {
     linkStatusEnabled: true,  // Default: enabled
-    layoutMode: 'cards'       // 'cards' or 'nested'
+    layoutMode: 'cards',      // 'cards' or 'nested'
+    playerType: 'html5'       // 'html5' or 'clappr'
 };
 
 function loadAppSettings() {
@@ -1053,6 +1054,10 @@ async function handleNestedMediaClick(item, type, cardElement) {
 
     // Handlers
     panel.querySelector('.back-to-grid-btn').addEventListener('click', () => {
+        // Stop Clappr player if active
+        if (typeof ClapprPlayer !== 'undefined' && ClapprPlayer.isActive()) {
+            ClapprPlayer.stop();
+        }
         panel.remove();
         if (existingGrid) existingGrid.style.display = '';
     });
@@ -1060,42 +1065,69 @@ async function handleNestedMediaClick(item, type, cardElement) {
     // Player Init Function
     const playContent = (streamUrl, containerId = '#nested-vod-player-container') => {
         const container = panel.querySelector(containerId);
-        container.innerHTML = `<video id="vod-video" controls autoplay style="width:100%; height:100%; background:black;"></video>`;
-        const video = container.querySelector('video');
+        const useClappr = appSettings.playerType === 'clappr' && typeof ClapprPlayer !== 'undefined';
 
         // Reset controls
         const controlsPanel = panel.querySelector('#track-controls');
         controlsPanel.innerHTML = '<span style="opacity:0.5;">Loading tracks...</span>';
 
-        if (Hls.isSupported() && streamUrl.endsWith('.m3u8')) {
-            const hls = new Hls();
-            hls.loadSource(streamUrl);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                video.play();
-                updateTrackControls(hls, controlsPanel); // HLS mode
-            });
-            hls.on(Hls.Events.ERROR, function (event, data) {
-                if (data.fatal) {
-                    console.error("HLS Error", data);
-                }
-            });
+        if (useClappr) {
+            // Use Clappr player
+            container.innerHTML = ''; // Clear the container
+
+            // Stop any existing Clappr playback
+            if (ClapprPlayer.isActive()) {
+                ClapprPlayer.stop();
+            }
+
+            // Create a Clappr-specific container
+            const clapprContainer = document.createElement('div');
+            clapprContainer.id = 'vod-clappr-container';
+            clapprContainer.style.cssText = 'width:100%; height:100%;display:none;';
+            container.appendChild(clapprContainer);
+
+            // Initialize Clappr
+            const playItem = { url: streamUrl, title: item.title };
+            ClapprPlayer.play(playItem, type, container);
+
+            // Update track controls for Clappr
+            controlsPanel.innerHTML = '<span style="opacity:0.5;">Track selection available in player controls</span>';
+
         } else {
-            video.src = streamUrl;
-            video.play().catch(e => console.error("Playback failed", e));
+            // Use native HTML5 player
+            container.innerHTML = `<video id="vod-video" controls autoplay style="width:100%; height:100%; background:black;"></video>`;
+            const video = container.querySelector('video');
 
-            // Handle native tracks
-            const checkNativeTracks = () => {
-                console.log("Checking for native tracks...");
-                console.log("Audio Tracks:", video.audioTracks ? video.audioTracks.length : 'undefined');
-                console.log("Text Tracks:", video.textTracks ? video.textTracks.length : 'undefined');
-                updateTrackControls(video, controlsPanel, true); // Native mode
-            };
+            if (Hls.isSupported() && streamUrl.endsWith('.m3u8')) {
+                const hls = new Hls();
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    video.play();
+                    updateTrackControls(hls, controlsPanel); // HLS mode
+                });
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        console.error("HLS Error", data);
+                    }
+                });
+            } else {
+                video.src = streamUrl;
+                video.play().catch(e => console.error("Playback failed", e));
 
-            video.addEventListener('loadedmetadata', checkNativeTracks);
-            // Also try immediately in case metadata is already loaded
-            if (video.readyState >= 1) {
-                checkNativeTracks();
+                // Handle native tracks
+                const checkNativeTracks = () => {
+                    console.log("Checking for native tracks...");
+                    console.log("Audio Tracks:", video.audioTracks ? video.audioTracks.length : 'undefined');
+                    console.log("Text Tracks:", video.textTracks ? video.textTracks.length : 'undefined');
+                    updateTrackControls(video, controlsPanel, true); // Native mode
+                };
+
+                video.addEventListener('loadedmetadata', checkNativeTracks);
+                // Also try immediately in case metadata is already loaded
+                if (video.readyState >= 1) {
+                    checkNativeTracks();
+                }
             }
         }
     };
@@ -2109,6 +2141,37 @@ function setupSettings() {
             layoutDesc.textContent = `Current: ${appSettings.layoutMode === 'nested' ? 'Nested Folders' : 'Full Cards'}`;
             saveAppSettings();
             renderContentViews();
+        });
+    }
+
+    // Player Type Toggle
+    const playerTypeToggle = document.getElementById('toggle-player-type');
+    const playerTypeLabel = document.getElementById('player-type-label');
+
+    if (playerTypeToggle && playerTypeLabel) {
+        // Initialize toggle state based on settings
+        if (appSettings.playerType === 'clappr') {
+            playerTypeToggle.classList.add('active');
+            playerTypeLabel.textContent = 'Clappr';
+        } else {
+            playerTypeLabel.textContent = 'HTML5';
+        }
+
+        playerTypeToggle.addEventListener('click', () => {
+            appSettings.playerType = appSettings.playerType === 'html5' ? 'clappr' : 'html5';
+            playerTypeToggle.classList.toggle('active', appSettings.playerType === 'clappr');
+            playerTypeLabel.textContent = appSettings.playerType === 'clappr' ? 'Clappr' : 'HTML5';
+            saveAppSettings();
+
+            // Stop any active player when switching
+            if (typeof cleanupPlayback === 'function') {
+                cleanupPlayback();
+            }
+            if (typeof ClapprPlayer !== 'undefined' && ClapprPlayer.stop) {
+                ClapprPlayer.stop();
+            }
+
+            console.log(`Player type changed to: ${appSettings.playerType}`);
         });
     }
 

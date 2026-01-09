@@ -8,6 +8,8 @@
 	<link rel="stylesheet" href="css/styles.css">
 	<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 	<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
+	<!-- Clappr Player -->
+	<script src="https://cdn.jsdelivr.net/npm/@clappr/player@latest/dist/clappr.min.js"></script>
 
 	<!-- webOS Integration -->
 	<script src="webOSTVjs-1.2.10/webOSTV.js" charset="utf-8"></script>
@@ -188,6 +190,17 @@
 					</div>
 					<div class="setting-item focusable" tabindex="0">
 						<div class="setting-info">
+							<span class="setting-label">Video Player Engine</span>
+							<span class="setting-description">Switch between HTML5 native player and Clappr
+								player</span>
+						</div>
+						<div class="toggle-switch" id="toggle-player-type">
+							<div class="toggle-knob"></div>
+						</div>
+						<span class="setting-value" id="player-type-label">HTML5</span>
+					</div>
+					<div class="setting-item focusable" tabindex="0">
+						<div class="setting-info">
 							<span class="setting-label">Clear Data</span>
 							<span class="setting-description">Reset app and remove all playlists</span>
 						</div>
@@ -310,6 +323,7 @@
 	<script src="js/xtream-client.js"></script>
 	<script src="js/navigation.js"></script>
 	<script src="js/player.js"></script>
+	<script src="js/clappr-player.js"></script>
 	<script src="js/app.js"></script>
 </body>
 
