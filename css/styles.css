@@ -2189,3 +2189,20 @@ video[src=''] {
 .vjs-control-bar {
     z-index: 10;
 }
+
+/* Video Service Integration */
+.video-active .placeholder-icon,
+.video-active .nested-player-hint,
+.video-active .tv-static {
+    display: none !important;
+}
+
+.video-active .player-logo-watermark {
+    opacity: 0;
+    transition: opacity 0.5s;
+}
+
+.videojs-container-wrapper {
+    width: 100%;
+    height: 100%;
+}

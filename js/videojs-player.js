@@ -1,256 +1,247 @@
 /**
- * VideoJS Player State
+ * VideoPlayer Service
+ * Handles video playback using Video.js.
+ * Decoupled from specific DOM IDs and focuses purely on playback logic.
  */
-const VideoJSPlayerState = {
-    player: null,           // VideoJS player instance
-    isInitialized: false,   // Is player initialized
-    currentSource: null,    // Current playing source URL
 
-    // Player container ID
-    containerId: 'videojs-player-container',
+const PLAYER_OPTIONS = {
+    controls: true,
+    autoplay: true,
+    preload: 'auto',
+    fluid: false, // CSS handles sizing
+    fill: true,
+    html5: {
+        hls: {
+            overrideNative: true // Use Video.js VHS for HLS consistency
+        },
+        nativeAudioTracks: true,
+        nativeVideoTracks: true,
+        nativeTextTracks: true
+    },
+    controlBar: {
+        children: [
+            'playToggle',
+            'volumePanel',
+            'currentTimeDisplay',
+            'timeDivider',
+            'durationDisplay',
+            'progressControl',
+            'liveDisplay',
+            'seekToLive',
+            'remainingTimeDisplay',
+            'customControlSpacer',
+            'playbackRateMenuButton',
+            'chaptersButton',
+            'descriptionsButton',
+            'subsCapsButton',
+            'audioTrackButton',
+            'fullscreenToggle',
+        ]
+    }
+};
 
-    // Destroy the player instance
-    destroy() {
-        if (this.player) {
-            try {
-                this.player.dispose(); // VideoJS uses dispose()
-            } catch (e) {
-                console.warn('Error destroying VideoJS player:', e);
+const MIME_TYPES = {
+    'm3u8': 'application/x-mpegURL',
+    'mpd': 'application/dash+xml',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mkv': 'video/webm'
+};
+
+class VideoPlayerService {
+    constructor() {
+        this.player = null;
+        this.activeContainer = null;
+        this.wrapperId = 'videojs-wrapper-' + Math.random().toString(36).substr(2, 9);
+    }
+
+    init() {
+        // Global Key Listener for Back/Esc/Stop
+        document.addEventListener('keydown', (e) => {
+            // 461: WebOS Back, 27: Esc, 8: Backspace, 413: Stop
+            const exitKeys = [461, 27, 8, 413];
+            // Only stop if active and NOT in an input field (prevent stopping when typing in search)
+            if (this.isActive() && exitKeys.includes(e.keyCode)) {
+                const tag = document.activeElement.tagName;
+                if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+                    this.stop();
+                }
             }
+        });
+
+        // Close button listener (if exists globally)
+        const closeBtn = document.getElementById('close-player-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.stop());
+        }
+
+        console.log('[VideoPlayer] Service initialized');
+    }
+
+    /**
+     * Start Playback
+     * @param {Object} item - Media item { url, mimeType, etc }
+     * @param {string} type - 'live', 'movie', 'series'
+     * @param {HTMLElement} targetContainer - The DOM element to mount the player into
+     */
+    play(item, type = 'unknown', targetContainer) {
+        if (!targetContainer) {
+            console.error('[VideoPlayer] No target container provided.');
+            return;
+        }
+
+        try {
+            // 1. Resolve Media Source
+            const { url, mimeType } = this._resolveMedia(item.url, type);
+            console.log(`[VideoPlayer] Playing: ${item.title || 'Unknown'} -> ${url}`);
+
+            // 2. Prepare UI (Mount/Create Player)
+            this._mountPlayer(targetContainer);
+
+            // 3. Update Styles
+            if (this.activeContainer) {
+                this.activeContainer.classList.add('video-active');
+            }
+
+            // 4. Load Source
+            if (this.player) {
+                this.player.ready(() => {
+                    this.player.src([{ src: url, type: mimeType }]);
+                    this.player.play().catch(e => {
+                        console.warn("[VideoPlayer] Playback failed or was blocked:", e);
+                    });
+                });
+            }
+        } catch (e) {
+            console.error('[VideoPlayer] Play Exception:', e);
+        }
+    }
+
+    /**
+     * Stop playback and reset UI
+     */
+    stop() {
+        if (this.player) {
+            this.player.pause();
+            this.player.currentTime(0);
+            this.player.trigger('loadstart'); // Clear display
+        }
+
+        if (this.activeContainer) {
+            this.activeContainer.classList.remove('video-active');
+            this.activeContainer.classList.remove('loading');
+            this.activeContainer = null;
+        }
+
+        // Note: We do not dispose the player here, we keep the instance recycling for performance.
+        // It will be disposed if the DOM node is lost.
+    }
+
+    /**
+     * Check if player is currently playing content
+     */
+    isActive() {
+        return this.player && !this.player.paused();
+    }
+
+    /**
+     * Internal: Move or Create the Video.js DOM structure inside the target
+     */
+    _mountPlayer(targetContainer) {
+        let wrapper = document.getElementById(this.wrapperId);
+
+        // Check if we have an instance but the wrapper is gone (Detached/Zombie state)
+        if (this.player && !wrapper) {
+            console.warn('[VideoPlayer] Wrapper lost. Disposing old instance.');
+            this.dispose();
+        }
+
+        if (!wrapper) {
+            // Create new DOM structure
+            wrapper = document.createElement('div');
+            wrapper.id = this.wrapperId;
+            wrapper.className = 'videojs-container-wrapper';
+            wrapper.style.cssText = 'width: 100%; height: 100%; display: block;';
+            wrapper.innerHTML = `<video class="video-js vjs-default-skin vjs-big-play-centered"></video>`;
+
+            targetContainer.appendChild(wrapper);
+
+            // Initialize Video.js
+            const videoEl = wrapper.querySelector('video');
+            this.player = videojs(videoEl, PLAYER_OPTIONS);
+            this._setupEvents();
+
+        } else if (wrapper.parentElement !== targetContainer) {
+            // Move existing wrapper to new container
+            targetContainer.appendChild(wrapper);
+            if (this.player) {
+                this.player.trigger('resize');
+            }
+        }
+
+        this.activeContainer = targetContainer;
+        wrapper.style.display = 'block';
+    }
+
+    _setupEvents() {
+        if (!this.player) return;
+
+        this.player.on('waiting', () => this._toggleLoading(true));
+        this.player.on('playing', () => this._toggleLoading(false));
+        this.player.on('canplay', () => this._toggleLoading(false));
+
+        this.player.on('error', () => {
+            const err = this.player.error();
+            console.error('[VideoPlayer] Error:', err);
+            this._toggleLoading(false);
+        });
+    }
+
+    _toggleLoading(isLoading) {
+        if (this.activeContainer) {
+            if (isLoading) this.activeContainer.classList.add('loading');
+            else this.activeContainer.classList.remove('loading');
+        }
+    }
+
+    dispose() {
+        if (this.player) {
+            this.player.dispose();
             this.player = null;
         }
-        this.isInitialized = false;
-        this.currentSource = null;
-
-        // Ensure container is empty/removed
-        const container = document.getElementById(this.containerId);
-        if (container) {
-            container.remove();
-        }
-    }
-};
-
-/**
- * VideoJS DOM Utilities
- */
-const VideoJSDOM = {
-    // Create or get the VideoJS container and video element
-    setupContainer(parentElement) {
-        // Remove existing if any (to ensure fresh start)
-        let container = document.getElementById(VideoJSPlayerState.containerId);
-        if (container) {
-            container.remove();
-        }
-
-        container = document.createElement('div');
-        container.id = VideoJSPlayerState.containerId;
-        container.className = 'videojs-container';
-        container.style.width = '100%';
-        container.style.height = '100%';
-
-        // VideoJS needs a video element target
-        const videoElement = document.createElement('video');
-        videoElement.className = 'video-js vjs-default-skin vjs-big-play-centered';
-        videoElement.style.width = '100%';
-        videoElement.style.height = '100%';
-
-        // Add to container
-        container.appendChild(videoElement);
-
-        // Append container to parent
-        if (parentElement) {
-            parentElement.appendChild(container);
-        }
-
-        return videoElement;
-    }
-};
-
-/**
- * Initialize VideoJS Player
- * @param {string} source - Media source URL
- * @param {HTMLElement} parentElement - Parent element to mount the player
- * @param {Object} options - Additional options
- */
-function initVideoJSPlayer(source, parentElement, options = {}) {
-    if (typeof videojs === 'undefined') {
-        console.error('Video.js is not loaded.');
-        return null;
     }
 
-    // Destroy existing
-    VideoJSPlayerState.destroy();
+    _resolveMedia(originalUrl, type) {
+        if (!originalUrl) return { url: '', mimeType: '' };
 
-    // Setup DOM
-    const videoElement = VideoJSDOM.setupContainer(parentElement);
+        let url = originalUrl;
 
-    // Determine MIME type
-    const mimeType = VideoJSStreamUtils.getMimeType(source);
-
-    // Options
-    const playerOptions = {
-        controls: true,
-        autoplay: true,
-        preload: 'auto',
-        fluid: false, // We control size via CSS/Container
-        fill: true,
-        sources: [{
-            src: source,
-            type: mimeType
-        }],
-        html5: {
-            hls: {
-                overrideNative: true // Use VideoJS HLS implementation for better control
-            },
-            nativeAudioTracks: true,
-            nativeVideoTracks: true,
-            nativeTextTracks: true,
-        },
-        controlBar: {
-            children: [
-                'playToggle',
-                'volumePanel',
-                'currentTimeDisplay',
-                'timeDivider',
-                'durationDisplay',
-                'progressControl',
-                'liveDisplay',
-                'seekToLive',
-                'remainingTimeDisplay',
-                'customControlSpacer',
-                'playbackRateMenuButton',
-                'chaptersButton',
-                'descriptionsButton',
-                'subsCapsButton',
-                'audioTrackButton',
-                'fullscreenToggle'
-            ]
-        },
-        ...options.playerOptions
-    };
-
-    try {
-        // Initialize
-        VideoJSPlayerState.player = videojs(videoElement, playerOptions);
-        VideoJSPlayerState.isInitialized = true;
-        VideoJSPlayerState.currentSource = source;
-
-        // Events
-        VideoJSPlayerState.player.on('ready', () => {
-            console.log('VideoJS player ready');
-            setLoaderState(false);
-        });
-
-        VideoJSPlayerState.player.on('error', (e) => {
-            console.error('VideoJS Error:', VideoJSPlayerState.player.error());
-            setLoaderState(false);
-        });
-
-        VideoJSPlayerState.player.on('waiting', () => setLoaderState(true));
-        VideoJSPlayerState.player.on('playing', () => setLoaderState(false));
-        VideoJSPlayerState.player.on('canplay', () => setLoaderState(false));
-
-        VideoJSPlayerState.player.on('loadedmetadata', () => {
-            console.log('=== Standard Player Metadata ===');
-            try {
-                const p = VideoJSPlayerState.player;
-                console.log('Player:', p);
-            } catch (e) {
-                console.error('Error logging metadata:', e);
-            }
-            console.log('================================');
-
-
-        });
-
-        console.log('VideoJS initialized with source:', source);
-        return VideoJSPlayerState.player;
-
-    } catch (e) {
-        console.error('Failed to initialize VideoJS:', e);
-        return null;
-    }
-}
-
-/**
- * Play media using VideoJS
- * @param {Object} item - Media item
- * @param {string} type - 'live', 'movie', 'series'
- * @param {HTMLElement} parentElement - Parent element
- */
-function playVideoJSMedia(item, type, parentElement) {
-    const playbackUrl = VideoJSStreamUtils.getBestUrl(item.url, type);
-
-    console.log('=== Starting VideoJS Playback ===');
-    console.log('URL:', playbackUrl);
-
-    setLoaderState(true);
-
-    const player = initVideoJSPlayer(playbackUrl, parentElement);
-    return !!player;
-}
-
-/**
- * Stream URL Utilities (Mirrored from others for standalone capability)
- */
-const VideoJSStreamUtils = {
-    getMimeType(url) {
-        if (/\.m3u8$/i.test(url)) return 'application/x-mpegURL';
-        if (/\.mpd$/i.test(url)) return 'application/dash+xml';
-        if (/\.mp4$/i.test(url)) return 'video/mp4';
-        if (/\.webm$/i.test(url)) return 'video/webm';
-        if (/\.mkv$/i.test(url)) return 'video/webm'; // Try webm for mkv
-        return 'application/x-mpegURL'; // Default to HLS
-    },
-
-    getBestUrl(originalUrl, type) {
-        // Xtream Codes often provide .ts for live, but .m3u8 is more compatible with web players
-        if (/\.ts$/i.test(originalUrl)) {
-            // Check if it looks like an Xtream structure (optional, but safe to just replace extension for most live cases)
-            return originalUrl.replace(/\.ts$/i, '.m3u8');
+        // Fix: Convert .ts to .m3u8 for HLS compatibility
+        if (/\.ts($|\?)/i.test(url)) {
+            url = url.replace(/\.ts($|\?)/i, (match) => match.replace('.ts', '.m3u8'));
         }
-
-        // Similar logic to Native
-        // For VideoJS, it handles m3u8 well.
-        if (type === 'live' || type === 'channels') {
-            // Ensure .m3u8 extension if missing for live
-            if (!/\.(m3u8|ts|mp4|mkv)$/i.test(originalUrl)) {
-                return originalUrl + '.m3u8';
+        // Fix: Ensure live streams have extensions (some servers need this)
+        else if ((type === 'live' || type === 'channels') && !/\.(m3u8|ts|mp4|mkv|mpd)($|\?)/i.test(url)) {
+            if (url.includes('?')) {
+                const parts = url.split('?');
+                url = `${parts[0]}.m3u8?${parts[1]}`;
+            } else {
+                url = url + '.m3u8';
             }
         }
-        return originalUrl;
-    }
-};
 
-/**
- * Helper to update global loader state (assumes global function exist or reimplements)
- */
-function setLoaderState(isLoading) {
-    const overlay = document.getElementById('player-overlay');
-    const nested = document.getElementById('nested-player-container');
-    if (isLoading) {
-        overlay?.classList.add('loading');
-        nested?.classList.add('loading');
-    } else {
-        overlay?.classList.remove('loading');
-        nested?.classList.remove('loading');
+        return {
+            url,
+            mimeType: this._getMimeType(url)
+        };
+    }
+
+    _getMimeType(url) {
+        const cleanUrl = url.split('?')[0];
+        const ext = cleanUrl.split('.').pop().toLowerCase();
+        return MIME_TYPES[ext] || 'application/x-mpegURL';
     }
 }
 
-
-
-// Window Export
-window.VideoJSPlayer = {
-    init: initVideoJSPlayer,
-    play: playVideoJSMedia,
-    destroy: () => VideoJSPlayerState.destroy(),
-    isActive: () => VideoJSPlayerState.isInitialized && !!VideoJSPlayerState.player,
-    move: (newParent) => {
-        const container = document.getElementById(VideoJSPlayerState.containerId);
-        if (container && newParent) {
-            newParent.appendChild(container);
-        }
-    },
-};
-
-console.log('VideoJS Player Module Loaded');
+// Export Singleton
+window.VideoPlayer = new VideoPlayerService();

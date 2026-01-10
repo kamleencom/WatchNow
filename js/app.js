@@ -73,7 +73,7 @@ async function initApp() {
     setupNavigation();
     setupResourcesUI();
     setupSearch();
-    setupPlayer();
+    VideoPlayer.init();
     setupSettings();
     setupFavoritesKeyHandler();
     createToastElement();
@@ -702,8 +702,6 @@ const lazyLoadState = {}; // Kept empty or remove if fully unused, but cleaning 
 function renderContentViews() {
     const mainContent = document.getElementById('main-content');
     mainContent.classList.add('nested-mode');
-
-    // Always render Nested Layout
     renderNestedLayout('live', state.aggregatedData.channels);
     renderNestedLayout('movies', state.aggregatedData.movies);
     renderNestedLayout('series', state.aggregatedData.series);
@@ -812,7 +810,6 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
                         </div>
                         <div class="nested-player-hint">Click active channel to enter Full Screen</div>
                     </div>
-                    
                     <div id="nested-player-info">
                         <div class="info-header">
                             <div class="channel-logo-large">
@@ -852,7 +849,13 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
                 // Check if already playing this channel
                 // Play in Embedded Mode
                 console.log("playing embedded...");
-                playMedia(item, 'live');
+                updatePlayerInfo(item);
+                const playerContainer = contentArea.querySelector('#nested-player-container');
+                if (playerContainer) {
+                    VideoPlayer.play(item, 'live', playerContainer);
+                } else {
+                    console.error("Player container not found!");
+                }
             });
 
             // Layout with Logo
@@ -1026,7 +1029,6 @@ async function handleNestedMediaClick(item, type, cardElement) {
 
     // Handlers
     panel.querySelector('.back-to-grid-btn').addEventListener('click', () => {
-
         panel.remove();
         if (existingGrid) existingGrid.style.display = '';
     });
@@ -1035,21 +1037,12 @@ async function handleNestedMediaClick(item, type, cardElement) {
     const playContent = (streamUrl, containerId = '#nested-vod-player-container') => {
         const container = panel.querySelector(containerId);
 
-        // Always use VideoJS
-        if (typeof VideoJSPlayer !== 'undefined') {
-            container.innerHTML = ''; // Clear container
-
-            // Stop/Destroy active engine to be safe
-            if (VideoJSPlayer.isActive()) {
-                VideoJSPlayer.destroy();
-            }
-
-            const playItem = { url: streamUrl, title: item.title };
-            // Play using VideoJS, telling it to mount in our container
-            VideoJSPlayer.play(playItem, type, container);
+        container.innerHTML = '';
+        const playItem = { url: streamUrl, title: item.title };
+        if (window.VideoPlayer) {
+            VideoPlayer.play(playItem, type, container);
         } else {
-            console.error("VideoJSPlayer not loaded");
-            container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:red;">Error: Video Player Not Loaded</div>';
+            console.error("VideoPlayer not loaded");
         }
     };
 
@@ -1118,7 +1111,6 @@ async function handleNestedMediaClick(item, type, cardElement) {
         });
 
     } else {
-        // MOVIE Logic
         panel.querySelector('.play-now-btn')?.addEventListener('click', () => {
             playContent(item.url);
         });
@@ -1220,7 +1212,8 @@ function createCard(item, type) {
         }
 
         if (type === 'live') {
-            playMedia(item, type);
+            updatePlayerInfo(item);
+            VideoPlayer.play(item, type);
         } else {
             // Movies & Series -> Click opens detail panel in nested view
             handleNestedMediaClick(item, type, card);
@@ -2245,5 +2238,28 @@ function showToast(icon, message, type = 'info') {
     // Hide after delay
     toastTimeout = setTimeout(() => {
         toast.classList.remove('visible');
-    }, 2500);
+    });
+}
+
+function updatePlayerInfo(item) {
+    const title = item.title || item.name || 'Unknown Title';
+    const nameEl = document.getElementById('nested-channel-name');
+    if (nameEl) nameEl.textContent = title;
+
+    const progTitle = document.getElementById('nested-program-title');
+    if (progTitle) progTitle.textContent = "No Program Information";
+
+    const progDesc = document.getElementById('nested-program-desc');
+    if (progDesc) progDesc.textContent = "Select a channel to start watching.";
+
+    const logoContainer = document.querySelector('#nested-player-info .channel-logo-large');
+    if (logoContainer) {
+        if (item.logo || item.stream_icon) {
+            const src = item.logo || item.stream_icon;
+            logoContainer.innerHTML = `<img src="${src}" alt="" onerror="this.parentElement.innerHTML='<span class=\\'placeholder-logo\\'><i data-lucide=\\'tv\\'></i></span>'; if(window.lucide) window.lucide.createIcons();">`;
+        } else {
+            logoContainer.innerHTML = `<span class="placeholder-logo"><i data-lucide="tv"></i></span>`;
+            if (window.lucide && window.lucide.createIcons) window.lucide.createIcons({ root: logoContainer });
+        }
+    }
 }
