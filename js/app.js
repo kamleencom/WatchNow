@@ -32,7 +32,6 @@ let linkStatusCache = {};
 // App Settings
 const appSettings = {
     linkStatusEnabled: true,  // Default: enabled
-    layoutMode: 'cards',      // 'cards' or 'nested'
     playerType: 'videojs'     // 'videojs' only
 };
 
@@ -80,7 +79,7 @@ async function initApp() {
     createToastElement();
 
     // Initial Load
-    await refreshContent();
+    await loadCachedContent();
 
     nav.init();
     switchToView('favorites');
@@ -154,7 +153,7 @@ function toggleResource(id, active) {
     const res = state.resources.find(r => r.id === id);
     if (res) {
         res.active = active;
-        res.status = active ? 'pending' : 'disabled';
+        // res.status = active ? 'pending' : 'disabled'; // Keep sync status independent
         saveResources();
     }
 }
@@ -378,8 +377,8 @@ async function clearPlaylistDB() {
 
 // --- Data Fetching & Aggregation ---
 
-async function refreshContent() {
-    showLoading(true);
+async function loadCachedContent() {
+    // showLoading(true); // Removed global loader
     const activeResources = state.resources.filter(r => r.active);
 
     // Process all active resources
@@ -396,8 +395,10 @@ async function refreshContent() {
             return;
         }
 
-        // 3. Sync (Fetch & Save)
-        await syncResource(res);
+        // 3. No Auto-Sync
+        if (!res.data) {
+            res.status = 'pending'; // Ensure status is pending if no data
+        }
     });
 
     await Promise.all(promises);
@@ -405,13 +406,12 @@ async function refreshContent() {
     aggregateData();
     renderContentViews();
     renderResourcesList();
-    showLoading(false);
+    // showLoading(false);
 }
 
 // Sync a single resource
-// Sync a single resource
 async function syncResource(res) {
-    if (!res.active) return;
+    // if (!res.active) return; // Allow syncing even if hidden
 
     // Cancel previous if any
     if (res.abortController) res.abortController.abort();
@@ -439,7 +439,7 @@ async function syncResource(res) {
         if (res.type === 'xtream' && res.credentials) {
             // XTREAM API SYNC
             const client = new XtreamClient(res.credentials.host, res.credentials.username, res.credentials.password, res.name);
-            const result = await client.fetchAll();
+            const result = await client.fetchAll(res.abortController.signal);
             stats = result.stats;
 
             // For Xtream we just save one big chunk for now because fetchAll returns full object
@@ -697,33 +697,16 @@ function aggregateData() {
 // --- UI Rendering ---
 
 // --- Optimization State ---
-const lazyLoadState = {
-    live: { groups: [], index: 0, observer: null },
-    movies: { groups: [], index: 0, observer: null },
-    series: { groups: [], index: 0, observer: null }
-};
+const lazyLoadState = {}; // Kept empty or remove if fully unused, but cleaning up renderContentViews first.
 
 function renderContentViews() {
-    // Reset States
-    Object.keys(lazyLoadState).forEach(key => {
-        lazyLoadState[key].index = 0;
-        lazyLoadState[key].groups = [];
-        if (lazyLoadState[key].observer) lazyLoadState[key].observer.disconnect();
-    });
-
     const mainContent = document.getElementById('main-content');
+    mainContent.classList.add('nested-mode');
 
-    if (appSettings.layoutMode === 'nested') {
-        mainContent.classList.add('nested-mode');
-        renderNestedLayout('live', state.aggregatedData.channels);
-        renderNestedLayout('movies', state.aggregatedData.movies);
-        renderNestedLayout('series', state.aggregatedData.series);
-    } else {
-        mainContent.classList.remove('nested-mode');
-        renderCategoryView('live', state.aggregatedData.channels);
-        renderCategoryView('movies', state.aggregatedData.movies);
-        renderCategoryView('series', state.aggregatedData.series);
-    }
+    // Always render Nested Layout
+    renderNestedLayout('live', state.aggregatedData.channels);
+    renderNestedLayout('movies', state.aggregatedData.movies);
+    renderNestedLayout('series', state.aggregatedData.series);
 }
 
 function renderNestedLayout(viewId, dataGroups) {
@@ -867,15 +850,9 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
                 btn.classList.add('active');
 
                 // Check if already playing this channel
-                if (PlayerState.channelNav.currentChannel && PlayerState.channelNav.currentChannel.url === item.url && PlayerState.mode.embedded) {
-                    // Toggle Full Screen
-                    console.log("Switching to Full Screen...");
-                    switchPlayerToFullScreen();
-                } else {
-                    // Play in Embedded Mode
-                    console.log("playing embedded...");
-                    playMedia(item, 'live');
-                }
+                // Play in Embedded Mode
+                console.log("playing embedded...");
+                playMedia(item, 'live');
             });
 
             // Layout with Logo
@@ -1058,13 +1035,9 @@ async function handleNestedMediaClick(item, type, cardElement) {
     const playContent = (streamUrl, containerId = '#nested-vod-player-container') => {
         const container = panel.querySelector(containerId);
 
-        const useVideoJS = appSettings.playerType === 'videojs' && typeof VideoJSPlayer !== 'undefined';
-
-        // Reset controls
-
-        if (useVideoJS) {
-            // Use VideoJS player
-            container.innerHTML = ''; // Clear native stuff
+        // Always use VideoJS
+        if (typeof VideoJSPlayer !== 'undefined') {
+            container.innerHTML = ''; // Clear container
 
             // Stop/Destroy active engine to be safe
             if (VideoJSPlayer.isActive()) {
@@ -1074,33 +1047,9 @@ async function handleNestedMediaClick(item, type, cardElement) {
             const playItem = { url: streamUrl, title: item.title };
             // Play using VideoJS, telling it to mount in our container
             VideoJSPlayer.play(playItem, type, container);
-
-
-
         } else {
-            // Use native HTML5 player
-            container.innerHTML = `<video id="vod-video" controls autoplay style="width:100%; height:100%; background:black;"></video>`;
-            const video = container.querySelector('video');
-
-            if (Hls.isSupported() && streamUrl.endsWith('.m3u8')) {
-                const hls = new Hls();
-                hls.loadSource(streamUrl);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                    video.play();
-
-                });
-                hls.on(Hls.Events.ERROR, function (event, data) {
-                    if (data.fatal) {
-                        console.error("HLS Error", data);
-                    }
-                });
-            } else {
-                video.src = streamUrl;
-                video.play().catch(e => console.error("Playback failed", e));
-
-
-            }
+            console.error("VideoJSPlayer not loaded");
+            container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:red;">Error: Video Player Not Loaded</div>';
         }
     };
 
@@ -1180,158 +1129,7 @@ async function handleNestedMediaClick(item, type, cardElement) {
 
 
 
-function renderCategoryView(viewId, dataGroups) {
-    const container = document.getElementById(`${viewId}-rows`);
-    container.innerHTML = '';
 
-    const groups = Object.keys(dataGroups).sort(); // Alphabetical sort
-
-    // Check empty
-    if (groups.length === 0) {
-        container.innerHTML = `<div style="padding:40px; text-align:center; color:#666;">No content available. Go to Resources to add playlists.</div>`;
-        return;
-    }
-
-    // Initialize State
-    lazyLoadState[viewId].groups = groups;
-    lazyLoadState[viewId].data = dataGroups;
-    lazyLoadState[viewId].container = container;
-
-    // Create Sentinel for Infinite Scroll
-    const sentinel = document.createElement('div');
-    sentinel.className = 'scroll-sentinel';
-    sentinel.style.height = '50px';
-    sentinel.style.width = '100%';
-
-    // Setup Observer
-    lazyLoadState[viewId].observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting) {
-            renderNextBatch(viewId);
-        }
-    }, { root: null, margin: '200px' });
-
-    // Initial Batch
-    renderNextBatch(viewId);
-
-    // Append sentinel after initial content
-    container.appendChild(sentinel);
-    lazyLoadState[viewId].observer.observe(sentinel);
-}
-
-function renderNextBatch(viewId) {
-    const stateObj = lazyLoadState[viewId];
-    const BATCH_SIZE = 5; // Render 5 groups at a time
-    const MAX_ITEMS_INITIAL = 30; // Only show top 30 items horizontally
-
-    const nextGroups = stateObj.groups.slice(stateObj.index, stateObj.index + BATCH_SIZE);
-
-    if (nextGroups.length === 0) return;
-
-    // We insert before the sentinel (which is the last child)
-    const sentinel = stateObj.container.lastElementChild;
-
-    nextGroups.forEach(group => {
-        const items = stateObj.data[group];
-        if (items.length === 0) return;
-
-        // Row Structure
-        const row = document.createElement('div');
-        row.className = 'category-row';
-
-        // Title
-        const title = document.createElement('div');
-        title.className = 'row-title';
-        title.style.display = 'flex';
-        title.style.alignItems = 'center';
-
-        const bucketType = viewId === 'live' ? 'channels' : viewId;
-        const isFavBucket = isBucketFavorite(group, bucketType);
-
-        title.innerHTML = `
-            <span>${group}</span> 
-            <span style="opacity:0.5; font-size:0.8em; margin-left:10px; margin-right: 15px;">(${items.length})</span>
-            <button class="favorite-bucket-btn ${isFavBucket ? 'active' : ''}" style="background:none; border:none; color:${isFavBucket ? '#ffb020' : '#666'}; font-size: 1.2em; cursor: pointer; transition: transform 0.2s;">
-                <i data-lucide="star" style="width: 20px; height: 20px; ${isFavBucket ? 'fill: currentColor;' : ''}"></i>
-            </button>
-        `;
-        lucide.createIcons({
-            root: title
-        });
-
-        // Event for bucket favorite
-        const favBtn = title.querySelector('.favorite-bucket-btn');
-        favBtn.onclick = (e) => {
-            e.stopPropagation();
-            toggleFavoriteBucket(group, bucketType, favBtn);
-        };
-
-        row.appendChild(title);
-
-        // Horizontal Scroll Container
-        const scrollContainer = document.createElement('div');
-        scrollContainer.className = 'horizontal-scroll-container';
-
-        // Lazy Render Horizontal Items
-        const initialItems = items.slice(0, MAX_ITEMS_INITIAL);
-        initialItems.forEach(item => {
-            const card = createCard(item, viewId);
-            scrollContainer.appendChild(card);
-        });
-
-        // "Load More" Card if needed
-        if (items.length > MAX_ITEMS_INITIAL) {
-            const moreCard = createMoreCard(items, MAX_ITEMS_INITIAL, viewId);
-            scrollContainer.appendChild(moreCard);
-        }
-
-        row.appendChild(scrollContainer);
-        stateObj.container.insertBefore(row, sentinel);
-    });
-
-    stateObj.index += BATCH_SIZE;
-}
-
-function createMoreCard(allItems, currentIndex, type) {
-    const card = document.createElement('div');
-    card.className = 'card card-more focusable';
-    card.tabIndex = 0;
-    card.style.minWidth = '150px';
-    card.style.display = 'flex';
-    card.style.alignItems = 'center';
-    card.style.justifyContent = 'center';
-    card.style.backgroundColor = 'rgba(255,255,255,0.1)';
-    card.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
-            <i data-lucide="plus-circle" style="width:32px; height:32px; opacity:0.8;"></i>
-            <span style="font-weight:bold; font-size:12px;">+${allItems.length - currentIndex} More</span>
-        </div>
-    `;
-    lucide.createIcons({ root: card });
-
-    card.addEventListener('click', (e) => {
-        const container = card.parentElement;
-        // Remove "More" button
-        card.remove();
-
-        // Append next batch (e.g., 50 more)
-        const nextBatchSize = 50;
-        const nextItems = allItems.slice(currentIndex, currentIndex + nextBatchSize);
-
-        nextItems.forEach(item => {
-            const newCard = createCard(item, type);
-            container.appendChild(newCard);
-        });
-
-        // Add new "More" button if still remaining
-        const newIndex = currentIndex + nextBatchSize;
-        if (newIndex < allItems.length) {
-            const newMoreCard = createMoreCard(allItems, newIndex, type);
-            container.appendChild(newMoreCard);
-        }
-    });
-
-    return card;
-}
 
 function createCard(item, type) {
     const card = document.createElement('div');
@@ -1425,12 +1223,7 @@ function createCard(item, type) {
             playMedia(item, type);
         } else {
             // Movies & Series -> Click opens detail panel in nested view
-            // But only if we are in nested view.
-            if (appSettings.layoutMode === 'nested') {
-                handleNestedMediaClick(item, type, card);
-            } else {
-                playMedia(item, type);
-            }
+            handleNestedMediaClick(item, type, card);
         }
     });
 
@@ -1517,12 +1310,19 @@ function renderResourcesList() {
         } else if (res.status === 'cancelled') {
             statusIcon = '<span style="color:orange">⏹</span>';
             statusText = 'Cancelled';
-        } else if (!res.active) {
-            statusText = 'Disabled';
         } else {
-            statusIcon = '<i data-lucide="check-circle-2" style="color:#10b981; width: 16px; height: 16px;"></i>';
-            const date = res.lastSynced ? new Date(res.lastSynced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never';
-            statusText = `Synced: ${date}`;
+            // Synced or Pending or Disabled(Hidden)
+            if (res.status === 'synced' || res.lastSynced) {
+                statusIcon = '<i data-lucide="check-circle-2" style="color:#10b981; width: 16px; height: 16px;"></i>';
+                const date = res.lastSynced ? new Date(res.lastSynced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never';
+                statusText = `Synced: ${date}`;
+            } else {
+                statusText = 'Not Synced';
+            }
+
+            if (!res.active) {
+                statusText += ' (Hidden)';
+            }
         }
 
         let actionButtons = '';
@@ -1614,7 +1414,8 @@ function renderResourcesList() {
             // Delete
             item.querySelector('.delete-btn').addEventListener('click', async (e) => {
                 e.stopPropagation();
-                if (confirm(`Delete playlist "${res.name}"?`)) {
+                const confirmed = await ConfirmationModal.show('Delete Playlist', `Are you sure you want to delete "${res.name}"?`);
+                if (confirmed) {
                     removeResource(res.id);
                     renderResourcesList();
                     // Re-calculate everything since a source is gone
@@ -1649,7 +1450,7 @@ function openEditPlaylistModal(resource) {
     modalTitle.textContent = 'Edit Playlist';
     editIdField.value = resource.id;
     nameInput.value = resource.name;
-    saveBtn.textContent = 'Update & Sync';
+    saveBtn.textContent = 'Update';
 
     const tabs = modal.querySelectorAll('.modal-tab');
     const contents = modal.querySelectorAll('.tab-content');
@@ -1827,6 +1628,26 @@ function setupResourcesUI() {
             url = safeHost;
             type = 'xtream';
             credentials = { host: safeHost, username: user, password: pass };
+
+            // Verify Credentials
+            const originalText = saveBtn.textContent;
+            const originalDisabled = saveBtn.disabled;
+            saveBtn.textContent = 'Verifying...';
+            saveBtn.disabled = true;
+
+            try {
+                const client = new XtreamClient(safeHost, user, pass);
+                await client.authenticate();
+            } catch (e) {
+                alert('Authentication Failed: ' + (e.message || 'Unknown Error'));
+                saveBtn.textContent = originalText;
+                saveBtn.disabled = originalDisabled;
+                return;
+            }
+
+            saveBtn.textContent = originalText;
+            saveBtn.disabled = originalDisabled;
+
         } else {
             url = document.getElementById('new-playlist-url').value.trim();
             if (!url) {
@@ -1843,13 +1664,15 @@ function setupResourcesUI() {
         if (editId) {
             // Edit mode - update existing resource
             await updateResource(editId, name, url, { type, credentials });
+            showToast('check', 'Playlist updated successfully', 'success');
         } else {
             // Add mode - create new resource
             addResource(name, url, { type, credentials });
+            showToast('check', 'Playlist added successfully', 'success');
         }
 
         closeModal();
-        await refreshContent();
+        renderResourcesList();
     });
 }
 
@@ -1875,7 +1698,7 @@ function resetModalToAddMode() {
     document.getElementById('xtream-pass').value = '';
 
     if (modalTitle) modalTitle.textContent = 'Add New Playlist';
-    if (saveBtn) saveBtn.textContent = 'Save & Sync';
+    if (saveBtn) saveBtn.textContent = 'Save';
     if (fileImportGroup) fileImportGroup.style.display = '';
 }
 
@@ -1987,21 +1810,7 @@ function setupSettings() {
         });
     }
 
-    // Layout Mode Toggle
-    const layoutToggleBtn = document.getElementById('layout-toggle-btn');
-    const layoutDesc = document.getElementById('layout-mode-desc');
 
-    if (layoutToggleBtn && layoutDesc) {
-        // Set Initial Valid
-        layoutDesc.textContent = `Current: ${appSettings.layoutMode === 'nested' ? 'Nested Folders' : 'Full Cards'}`;
-
-        layoutToggleBtn.addEventListener('click', () => {
-            appSettings.layoutMode = appSettings.layoutMode === 'cards' ? 'nested' : 'cards';
-            layoutDesc.textContent = `Current: ${appSettings.layoutMode === 'nested' ? 'Nested Folders' : 'Full Cards'}`;
-            saveAppSettings();
-            renderContentViews();
-        });
-    }
 
 
 
@@ -2009,7 +1818,8 @@ function setupSettings() {
     const resetBtn = document.getElementById('reset-app-btn');
     if (resetBtn) {
         resetBtn.addEventListener('click', async () => {
-            if (confirm('Are you sure you want to clear all playlists and reset the app?')) {
+            const confirmed = await ConfirmationModal.show('Reset App', 'Are you sure you want to clear all playlists and reset the app?');
+            if (confirmed) {
                 localStorage.clear();
                 await clearPlaylistDB();
                 location.reload();

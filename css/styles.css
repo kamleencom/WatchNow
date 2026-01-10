@@ -287,27 +287,7 @@ h2 {
     margin-top: 10px;
 }
 
-/* --- Content Rows (Horizontal Scroll) --- */
-.category-row {
-    margin-bottom: 40px;
-}
 
-.row-title {
-    font-size: 18px;
-    color: var(--text-secondary);
-    margin-bottom: 15px;
-    padding-left: 5px;
-    text-transform: capitalize;
-}
-
-.horizontal-scroll-container {
-    display: flex;
-    gap: 20px;
-    overflow-x: auto;
-    padding: 10px 5px 30px 5px;
-    /* Padding for hover growth */
-    scroll-behavior: smooth;
-}
 
 /* Card Dimensions */
 .card {
@@ -2006,13 +1986,13 @@ video[src=''] {
 .detail-content-row {
     flex: 1;
     display: flex;
-    gap: 30px;
+    gap: 10px;
     min-height: 0;
     overflow: hidden;
 }
 
 .detail-column {
-    width: 320px;
+    width: 280px;
     display: flex;
     flex-direction: column;
     gap: 20px;

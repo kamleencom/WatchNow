@@ -14,20 +14,10 @@ const PlayerState = {
     },
 
     // Timeout references
-    timeouts: {
-        preview: null    // Auto-hide preview card timeout
-    },
+    // Timeout references
+    timeouts: {},
 
-    // Channel navigation state
-    channelNav: {
-        isActive: false,           // Is channel nav enabled for current playback
-        currentChannel: null,      // Currently playing channel object
-        currentIndex: -1,          // Index in channelList
-        channelList: [],           // Flat list of all channels for navigation
-        previewVisible: false,     // Is preview card showing
-        previewDirection: null,    // 'next' or 'prev'
-        isTransitioning: false     // Is currently switching channels
-    },
+
 
     // Helper methods for common state operations
     reset() {
@@ -35,27 +25,15 @@ const PlayerState = {
         this.mode.embedded = false;
         this.mode.fullScreen = false;
         this.clearTimeouts();
-        this.resetChannelNav();
     },
 
 
 
     clearTimeouts() {
-        if (this.timeouts.preview) {
-            clearTimeout(this.timeouts.preview);
-            this.timeouts.preview = null;
-        }
+        // No timeouts currently
     },
 
-    resetChannelNav() {
-        this.channelNav.isActive = false;
-        this.channelNav.currentChannel = null;
-        this.channelNav.currentIndex = -1;
-        this.channelNav.previewVisible = false;
-        this.channelNav.previewDirection = null;
-        this.channelNav.isTransitioning = false;
-        // Note: channelList is kept to avoid rebuilding on every close
-    }
+
 };
 
 /**
@@ -66,7 +44,7 @@ const PlayerState = {
 const PlayerDOM = {
 
     overlay: null,
-    previewCard: null,
+
     closeBtn: null,
     infoSection: null,
 
@@ -79,7 +57,7 @@ const PlayerDOM = {
     init() {
 
         this.overlay = document.getElementById('player-overlay');
-        this.previewCard = document.getElementById('next-channel-preview');
+
         this.closeBtn = document.getElementById('close-player-btn');
         this.infoSection = document.getElementById('nested-player-info');
     }
@@ -119,10 +97,7 @@ window.setupPlayer = function () {
                 return;
             }
 
-            // Handle channel navigation (up/down arrows)
-            if (typeof handleChannelNavigation === 'function' && handleChannelNavigation(e)) {
-                return; // Event was handled by channel navigation
-            }
+
         }
     });
 };
@@ -290,12 +265,7 @@ async function playMedia(item, type = 'unknown') {
         PlayerDOM.overlay.classList.add('visible');
     }
 
-    // Initialize channel navigation for live TV
-    if (type === 'live' || type === 'channels') {
-        initChannelNav(item);
-    } else {
-        PlayerState.channelNav.isActive = false;
-    }
+
 
     // Show loading state
     PlayerDOM.overlay.classList.add('loading');
@@ -348,26 +318,7 @@ function switchPlayerToEmbedded() {
     PlayerState.mode.embedded = true;
     PlayerState.mode.fullScreen = false;
 
-    // Hide any visible preview
-    hideNextChannelPreview();
 
-    // Find and focus the currently playing channel in the channels panel
-    let targetChannel = null;
-
-    if (PlayerState.channelNav.currentChannel && PlayerState.channelNav.currentChannel.url) {
-        const channelUrl = PlayerState.channelNav.currentChannel.url;
-        const itemsSidebar = document.querySelector('.items-sidebar.visible');
-
-        if (itemsSidebar) {
-            const matchingBtn = itemsSidebar.querySelector(`.nested-list-item[data-url="${CSS.escape(channelUrl)}"]`);
-
-            if (matchingBtn) {
-                itemsSidebar.querySelectorAll('.nested-list-item').forEach(b => b.classList.remove('active'));
-                matchingBtn.classList.add('active');
-                targetChannel = matchingBtn;
-            }
-        }
-    }
 
     if (!targetChannel) {
         targetChannel = document.querySelector('.nested-list-item.active');
@@ -394,17 +345,12 @@ function cleanupPlayback() {
 
 
 function closePlayer() {
-    // If in Full Screen & Nested Mode with channel navigation active -> Go back to Embedded
-    // This only applies to Live TV, not movies/series
-    if (PlayerState.mode.fullScreen && appSettings.layoutMode === 'nested' && PlayerState.channelNav.isActive) {
-        switchPlayerToEmbedded();
-        return;
-    }
+
 
     // Use centralized cleanup
     cleanupPlayback();
 
-    hideNextChannelPreview();
+
 
     PlayerDOM.overlay.classList.remove('visible');
     PlayerDOM.overlay.classList.remove('video-playing');
@@ -425,238 +371,7 @@ function closePlayer() {
 }
 
 
-// --- Channel Navigation Feature ---
 
-/**
- * Builds a flat list of all channels for navigation
- */
-function buildChannelList() {
-    const channels = [];
-    const channelData = state.aggregatedData.channels;
-
-    // Flatten all channel groups into a single array
-    Object.keys(channelData).sort().forEach(group => {
-        channelData[group].forEach(channel => {
-            channels.push({
-                ...channel,
-                group: group
-            });
-        });
-    });
-
-    return channels;
-}
-
-/**
- * Initializes channel navigation when a channel starts playing
- */
-function initChannelNav(playingChannel) {
-    if (PlayerState.channelNav.channelList.length === 0) {
-        PlayerState.channelNav.channelList = buildChannelList();
-    }
-
-    const index = PlayerState.channelNav.channelList.findIndex(ch => ch.url === playingChannel.url);
-
-    PlayerState.channelNav.currentChannel = playingChannel;
-    PlayerState.channelNav.currentIndex = index;
-    PlayerState.channelNav.isActive = true;
-    PlayerState.channelNav.previewVisible = false;
-    PlayerState.channelNav.isTransitioning = false;
-
-    console.log(`Channel Nav initialized. Index: ${index}/${PlayerState.channelNav.channelList.length}`);
-}
-
-/**
- * Resets channel navigation state
- */
-function resetChannelNavState() {
-    PlayerState.resetChannelNav();
-    PlayerState.clearTimeouts();
-}
-
-/**
- * Calculates the channel index for a given direction (wraps around)
- */
-function calculateChannelIndex(direction) {
-    const listLength = PlayerState.channelNav.channelList.length;
-    if (listLength === 0) return -1;
-
-    const currentIndex = PlayerState.channelNav.currentIndex;
-
-    if (direction === 'next') {
-        return (currentIndex + 1) % listLength;
-    } else {
-        return currentIndex - 1 < 0 ? listLength - 1 : currentIndex - 1;
-    }
-}
-
-/**
- * Gets the next channel in the list (wraps around)
- */
-function getNextChannel() {
-    const index = calculateChannelIndex('next');
-    return index >= 0 ? PlayerState.channelNav.channelList[index] : null;
-}
-
-/**
- * Gets the previous channel in the list (wraps around)
- */
-function getPreviousChannel() {
-    const index = calculateChannelIndex('prev');
-    return index >= 0 ? PlayerState.channelNav.channelList[index] : null;
-}
-
-/**
- * Shows the channel preview card for a given direction
- */
-function showChannelPreview(direction) {
-    let targetChannel = null;
-    let label = '';
-
-    if (direction === 'next') {
-        targetChannel = getNextChannel();
-        label = 'Next Channel';
-    } else {
-        targetChannel = getPreviousChannel();
-        label = 'Previous Channel';
-    }
-
-    if (!targetChannel) return;
-    if (!PlayerDOM.previewCard) return;
-
-    // Populate data
-    PlayerDOM.previewCard.querySelector('.preview-title').textContent = targetChannel.title;
-    PlayerDOM.previewCard.querySelector('.preview-label').textContent = label;
-    PlayerDOM.previewCard.querySelector('.preview-meta').textContent = direction === 'next' ? 'Press ▼ to switch' : 'Press ▲ to switch';
-
-    // Show card
-    PlayerDOM.previewCard.classList.remove('preview-next', 'preview-prev');
-    PlayerDOM.previewCard.classList.add(direction === 'next' ? 'preview-next' : 'preview-prev');
-    PlayerDOM.previewCard.classList.add('visible');
-    PlayerState.channelNav.previewVisible = true;
-    PlayerState.channelNav.previewDirection = direction;
-
-    // Auto hide after 5 seconds
-    PlayerState.clearTimeouts();
-    PlayerState.timeouts.preview = setTimeout(() => {
-        hideNextChannelPreview();
-    }, 5000);
-}
-
-/**
- * Hides the next channel preview card
- */
-function hideNextChannelPreview() {
-    if (PlayerDOM.previewCard) {
-        PlayerDOM.previewCard.classList.remove('visible');
-    }
-    PlayerState.channelNav.previewVisible = false;
-    PlayerState.clearTimeouts();
-    PlayerState.channelNav.previewDirection = null;
-}
-
-/**
- * Switches to a channel in the specified direction
- */
-function switchChannel(direction) {
-    if (PlayerState.channelNav.isTransitioning) return;
-
-    const isNext = direction === 'next';
-    const targetChannel = isNext ? getNextChannel() : getPreviousChannel();
-    if (!targetChannel) return;
-
-    PlayerState.channelNav.isTransitioning = true;
-    hideNextChannelPreview();
-
-    console.log(`Switching to ${direction} channel:`, targetChannel.title);
-
-    // Show channel switch indicator
-    showChannelSwitchIndicator(targetChannel.title, isNext ? 'down' : 'up');
-
-    // Cleanup current playback
-    cleanupPlayback();
-
-    // Update state
-    PlayerState.channelNav.currentIndex = calculateChannelIndex(direction);
-    PlayerState.channelNav.currentChannel = targetChannel;
-
-    // Play the target channel using VideoJS
-    setTimeout(() => {
-        if (typeof VideoJSPlayer !== 'undefined') {
-            const playerParent = PlayerState.mode.embedded ? PlayerDOM.nestedContainer : PlayerDOM.overlay;
-            VideoJSPlayer.play(targetChannel, 'live', playerParent);
-        }
-        PlayerState.channelNav.isTransitioning = false;
-    }, 300);
-}
-
-/**
- * Shows a brief channel switch indicator
- */
-function showChannelSwitchIndicator(channelName, direction) {
-    const existing = document.querySelector('.channel-switch-indicator');
-    if (existing) existing.remove();
-
-    const indicator = document.createElement('div');
-    indicator.className = `channel-switch-indicator ${direction}`;
-    indicator.textContent = channelName;
-
-    PlayerDOM.overlay.appendChild(indicator);
-
-    setTimeout(() => {
-        indicator.remove();
-    }, 1500);
-}
-
-/**
- * Handles channel navigation key presses
- */
-function handleChannelNavigation(event) {
-    if (!PlayerState.channelNav.isActive) return false;
-    if (PlayerState.channelNav.isTransitioning) return true;
-
-    if (!PlayerDOM.overlay.classList.contains('visible')) return false;
-
-    const isDownKey = event.keyCode === 40 || event.key === 'ArrowDown';
-    const isUpKey = event.keyCode === 38 || event.key === 'ArrowUp';
-
-    if (isDownKey) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (PlayerState.channelNav.previewVisible && PlayerState.channelNav.previewDirection === 'next') {
-            switchChannel('next');
-        } else {
-            showChannelPreview('next');
-        }
-        return true;
-    }
-
-    if (isUpKey) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (PlayerState.channelNav.previewVisible && PlayerState.channelNav.previewDirection === 'prev') {
-            switchChannel('prev');
-        } else {
-            showChannelPreview('prev');
-        }
-        return true;
-    }
-
-    // Left/Right - hide preview if visible
-    const isLeftRight = event.keyCode === 37 || event.keyCode === 39 ||
-        event.key === 'ArrowLeft' || event.key === 'ArrowRight';
-    if (isLeftRight && PlayerState.channelNav.previewVisible) {
-        hideNextChannelPreview();
-    }
-
-    return false;
-}
-
-/**
- * Updates the info section in the nested layout with the current channel details.
- */
 function updateNestedInfo(item) {
     const infoContainer = document.getElementById('nested-player-info');
     if (!infoContainer) return;

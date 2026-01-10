@@ -101,7 +101,30 @@ function initVideoJSPlayer(source, parentElement, options = {}) {
         html5: {
             hls: {
                 overrideNative: true // Use VideoJS HLS implementation for better control
-            }
+            },
+            nativeAudioTracks: true,
+            nativeVideoTracks: true,
+            nativeTextTracks: true,
+        },
+        controlBar: {
+            children: [
+                'playToggle',
+                'volumePanel',
+                'currentTimeDisplay',
+                'timeDivider',
+                'durationDisplay',
+                'progressControl',
+                'liveDisplay',
+                'seekToLive',
+                'remainingTimeDisplay',
+                'customControlSpacer',
+                'playbackRateMenuButton',
+                'chaptersButton',
+                'descriptionsButton',
+                'subsCapsButton',
+                'audioTrackButton',
+                'fullscreenToggle'
+            ]
         },
         ...options.playerOptions
     };
@@ -126,6 +149,19 @@ function initVideoJSPlayer(source, parentElement, options = {}) {
         VideoJSPlayerState.player.on('waiting', () => setLoaderState(true));
         VideoJSPlayerState.player.on('playing', () => setLoaderState(false));
         VideoJSPlayerState.player.on('canplay', () => setLoaderState(false));
+
+        VideoJSPlayerState.player.on('loadedmetadata', () => {
+            console.log('=== Standard Player Metadata ===');
+            try {
+                const p = VideoJSPlayerState.player;
+                console.log('Player:', p);
+            } catch (e) {
+                console.error('Error logging metadata:', e);
+            }
+            console.log('================================');
+
+
+        });
 
         console.log('VideoJS initialized with source:', source);
         return VideoJSPlayerState.player;
@@ -163,7 +199,7 @@ const VideoJSStreamUtils = {
         if (/\.mpd$/i.test(url)) return 'application/dash+xml';
         if (/\.mp4$/i.test(url)) return 'video/mp4';
         if (/\.webm$/i.test(url)) return 'video/webm';
-        if (/\.mkv$/i.test(url)) return 'video/mp4'; // Try mp4 for mkv
+        if (/\.mkv$/i.test(url)) return 'video/webm'; // Try webm for mkv
         return 'application/x-mpegURL'; // Default to HLS
     },
 
@@ -200,6 +236,8 @@ function setLoaderState(isLoading) {
         nested?.classList.remove('loading');
     }
 }
+
+
 
 // Window Export
 window.VideoJSPlayer = {

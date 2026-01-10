@@ -12,12 +12,15 @@
 	<!-- Video.js Player -->
 	<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
 	<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 
 	<!-- webOS Integration -->
 	<script src="webOSTVjs-1.2.10/webOSTV.js" charset="utf-8"></script>
 
 	<!-- Icons -->
 	<script src="https://unpkg.com/lucide@latest"></script>
+
+
 </head>
 
 <body>
@@ -183,13 +186,7 @@
 							<div class="toggle-knob"></div>
 						</div>
 					</div>
-					<div class="setting-item focusable" tabindex="0">
-						<div class="setting-info">
-							<span class="setting-label">Layout Mode</span>
-							<span class="setting-description" id="layout-mode-desc">Current: Full Cards</span>
-						</div>
-						<button id="layout-toggle-btn" class="btn btn-glass">Switch Layout</button>
-					</div>
+
 
 					<div class="setting-item focusable" tabindex="0">
 						<div class="setting-info">
@@ -252,10 +249,12 @@
 			</div>
 			<div class="modal-actions">
 				<button id="cancel-playlist-btn" class="btn btn-text focusable">Cancel</button>
-				<button id="save-playlist-btn" class="btn btn-primary focusable">Save & Sync</button>
+				<button id="save-playlist-btn" class="btn btn-primary focusable">Save</button>
 			</div>
 		</div>
 	</div>
+
+	<script src="js/components/confirmation-modal.js"></script>
 
 	<!-- Player Overlay -->
 	<div id="player-overlay">
@@ -268,15 +267,7 @@
 		<!-- <div class="player-controls-overlay"></div> -->
 
 		<!-- Next Channel Preview Card -->
-		<div id="next-channel-preview" class="channel-preview-card">
-			<div class="preview-label">Next Channel</div>
-			<div class="preview-content">
-				<div class="preview-info">
-					<h3 class="preview-title">Channel Name</h3>
-					<div class="preview-meta">Press ▼ to switch</div>
-				</div>
-			</div>
-		</div>
+
 	</div>
 
 	<!-- Scripts -->

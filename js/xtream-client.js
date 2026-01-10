@@ -7,36 +7,47 @@ class XtreamClient {
     }
 
     async fetchWithTimeout(url, options = {}) {
-        const { timeout = 30000 } = options;
+        const { timeout = 30000, signal } = options;
         const controller = new AbortController();
+
+        // Handle external signal
+        if (signal) {
+            if (signal.aborted) {
+                return Promise.reject(new DOMException('Aborted', 'AbortError'));
+            }
+            signal.addEventListener('abort', () => controller.abort());
+        }
+
         const id = setTimeout(() => controller.abort(), timeout);
+
         try {
             const response = await fetch(url, { ...options, signal: controller.signal });
             clearTimeout(id);
             return response;
         } catch (e) {
             clearTimeout(id);
+            // If it was our timeout that caused abort, throw Timeout
+            // If it was external signal, it will propagate as AbortError (or we can ensure it)
+            if (signal && signal.aborted) {
+                throw new DOMException('Aborted', 'AbortError');
+            }
             throw e;
         }
     }
 
-    async fetchJson(action, params = {}) {
+    async fetchJson(action, params = {}, signal = null) {
         let url = `${this.authUrl}&action=${action}`;
         for (const [key, value] of Object.entries(params)) {
             url += `&${key}=${encodeURIComponent(value)}`;
         }
 
         try {
-            const res = await this.fetchWithTimeout(url);
+            const res = await this.fetchWithTimeout(url, { signal });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
         } catch (e) {
-            // Try Proxy if direct fails
-            console.warn(`Direct fetch to ${action} failed, trying proxy...`);
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-            const res = await this.fetchWithTimeout(proxyUrl);
-            if (!res.ok) throw new Error(`Proxy HTTP ${res.status}`);
-            return await res.json();
+            if (e.name === 'AbortError') throw e; // Propagate abort immediately
+            throw e;
         }
     }
 
@@ -49,7 +60,7 @@ class XtreamClient {
         throw new Error('Authentication Failed');
     }
 
-    async fetchAll() {
+    async fetchAll(signal = null) {
         const data = {
             channels: {},
             movies: {},
@@ -62,10 +73,20 @@ class XtreamClient {
         };
 
         // Parallel Fetching of Categories
+        // We catch errors per request so one failure doesn't break all, 
+        // BUT if it's an AbortError, we should arguably stop everything.
+        // However, Promise.all will reject immediately if one rejects.
+        // Let's ensure we propagate AbortError.
+
+        const fetchCat = (action) => this.fetchJson(action, {}, signal).catch(e => {
+            if (e.name === 'AbortError') throw e;
+            return [];
+        });
+
         const [liveCats, vodCats, serCats] = await Promise.all([
-            this.fetchJson('get_live_categories').catch(() => []),
-            this.fetchJson('get_vod_categories').catch(() => []),
-            this.fetchJson('get_series_categories').catch(() => [])
+            fetchCat('get_live_categories'),
+            fetchCat('get_vod_categories'),
+            fetchCat('get_series_categories')
         ]);
 
         const liveCatMap = this.mapCategories(liveCats);
@@ -77,7 +98,7 @@ class XtreamClient {
 
         // 1. Live
         try {
-            const liveStreams = await this.fetchJson('get_live_streams');
+            const liveStreams = await this.fetchJson('get_live_streams', {}, signal);
             if (Array.isArray(liveStreams)) {
                 liveStreams.forEach(stream => {
                     const catName = liveCatMap[stream.category_id] || 'Uncategorized';
@@ -94,11 +115,14 @@ class XtreamClient {
                     stats.channels++;
                 });
             }
-        } catch (e) { console.error("Error fetching live streams", e); }
+        } catch (e) {
+            if (e.name === 'AbortError') throw e;
+            console.error("Error fetching live streams", e);
+        }
 
         // 2. VOD
         try {
-            const vodStreams = await this.fetchJson('get_vod_streams');
+            const vodStreams = await this.fetchJson('get_vod_streams', {}, signal);
             if (Array.isArray(vodStreams)) {
                 vodStreams.forEach(stream => {
                     const catName = vodCatMap[stream.category_id] || 'Uncategorized';
@@ -116,11 +140,14 @@ class XtreamClient {
                     stats.movies++;
                 });
             }
-        } catch (e) { console.error("Error fetching vod streams", e); }
+        } catch (e) {
+            if (e.name === 'AbortError') throw e;
+            console.error("Error fetching vod streams", e);
+        }
 
         // 3. Series
         try {
-            const seriesList = await this.fetchJson('get_series');
+            const seriesList = await this.fetchJson('get_series', {}, signal);
             if (Array.isArray(seriesList)) {
                 seriesList.forEach(series => {
                     const catName = serCatMap[series.category_id] || 'Uncategorized';
@@ -138,7 +165,10 @@ class XtreamClient {
                     stats.series++;
                 });
             }
-        } catch (e) { console.error("Error fetching series", e); }
+        } catch (e) {
+            if (e.name === 'AbortError') throw e;
+            console.error("Error fetching series", e);
+        }
 
         return { data, stats };
     }
