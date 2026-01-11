@@ -120,6 +120,7 @@ class VideoPlayerService {
                         console.warn("[VideoPlayer] Playback failed or was blocked:", e);
                     });
                 });
+                console.log(this.player);
             }
         } catch (e) {
             console.error('[VideoPlayer] Play Exception:', e);
