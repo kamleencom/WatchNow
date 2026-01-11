@@ -1019,6 +1019,7 @@ async function handleNestedMediaClick(item, type, cardElement) {
                              </div>
                          </div>
                     </div>
+                    <div id="track-info-container" class="track-info-panel" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 13px; color: #ccc; display: none;"></div>
 
                  </div>
              </div>
@@ -1038,8 +1039,9 @@ async function handleNestedMediaClick(item, type, cardElement) {
 
         container.innerHTML = '';
         const playItem = { url: streamUrl, title: item.title };
+        const infoContainer = panel.querySelector('#track-info-container');
         if (window.VideoPlayer) {
-            VideoPlayer.play(playItem, type, container);
+            VideoPlayer.play(playItem, type, container, infoContainer);
         } else {
             console.error("VideoPlayer not loaded");
         }

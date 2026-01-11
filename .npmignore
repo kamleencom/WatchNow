@@ -1,0 +1,10 @@
+node_modules
+build
+.git
+.gitignore
+.vscode
+.DS_Store
+*.ipk
+*.map
+.webosstudio.config
+ICON_AND_SPLASH_INSTRUCTIONS.md

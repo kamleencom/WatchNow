@@ -11,12 +11,12 @@ const PLAYER_OPTIONS = {
     fluid: false, // CSS handles sizing
     fill: true,
     html5: {
-        hls: {
-            overrideNative: true // Use Video.js VHS for HLS consistency
+        vhs: {
+            overrideNative: true
         },
         nativeAudioTracks: true,
         nativeVideoTracks: true,
-        nativeTextTracks: true
+        nativeTextTracks: true,
     },
     controlBar: {
         children: [
@@ -52,6 +52,7 @@ class VideoPlayerService {
     constructor() {
         this.player = null;
         this.activeContainer = null;
+        this.infoContainer = null;
         this.wrapperId = 'videojs-wrapper-' + Math.random().toString(36).substr(2, 9);
     }
 
@@ -82,9 +83,11 @@ class VideoPlayerService {
      * Start Playback
      * @param {Object} item - Media item { url, mimeType, etc }
      * @param {string} type - 'live', 'movie', 'series'
+     * @param {string} type - 'live', 'movie', 'series'
      * @param {HTMLElement} targetContainer - The DOM element to mount the player into
+     * @param {HTMLElement} [infoContainer] - Optional container to display track info
      */
-    play(item, type = 'unknown', targetContainer) {
+    play(item, type = 'unknown', targetContainer, infoContainer = null) {
         if (!targetContainer) {
             console.error('[VideoPlayer] No target container provided.');
             return;
@@ -94,6 +97,12 @@ class VideoPlayerService {
             // 1. Resolve Media Source
             const { url, mimeType } = this._resolveMedia(item.url, type);
             console.log(`[VideoPlayer] Playing: ${item.title || 'Unknown'} -> ${url}`);
+
+            this.infoContainer = infoContainer;
+            if (this.infoContainer) {
+                this.infoContainer.innerHTML = '';
+                this.infoContainer.style.display = 'none';
+            }
 
             // 2. Prepare UI (Mount/Create Player)
             this._mountPlayer(targetContainer);
@@ -130,7 +139,14 @@ class VideoPlayerService {
         if (this.activeContainer) {
             this.activeContainer.classList.remove('video-active');
             this.activeContainer.classList.remove('loading');
+            this.activeContainer.classList.remove('loading');
             this.activeContainer = null;
+        }
+
+        if (this.infoContainer) {
+            this.infoContainer.innerHTML = '';
+            this.infoContainer.style.display = 'none';
+            this.infoContainer = null;
         }
 
         // Note: We do not dispose the player here, we keep the instance recycling for performance.
@@ -195,6 +211,20 @@ class VideoPlayerService {
             console.error('[VideoPlayer] Error:', err);
             this._toggleLoading(false);
         });
+
+        this.player.on('loadedmetadata', () => {
+            this._updateTrackInfo();
+        });
+
+        // Listen for track changes
+        if (this.player.audioTracks && this.player.audioTracks()) {
+            this.player.audioTracks().on('change', () => this._updateTrackInfo());
+            this.player.audioTracks().on('addtrack', () => this._updateTrackInfo());
+        }
+        if (this.player.textTracks && this.player.textTracks()) {
+            this.player.textTracks().on('change', () => this._updateTrackInfo());
+            this.player.textTracks().on('addtrack', () => this._updateTrackInfo());
+        }
     }
 
     _toggleLoading(isLoading) {
@@ -240,6 +270,59 @@ class VideoPlayerService {
         const cleanUrl = url.split('?')[0];
         const ext = cleanUrl.split('.').pop().toLowerCase();
         return MIME_TYPES[ext] || 'application/x-mpegURL';
+    }
+
+    _updateTrackInfo() {
+        if (!this.infoContainer || !this.player) return;
+
+        const audioTracks = this.player.audioTracks ? Array.from(this.player.audioTracks()) : [];
+        const textTracks = this.player.textTracks ? Array.from(this.player.textTracks()) : [];
+
+        // Filter text tracks for subtitles/captions
+        const subs = textTracks.filter(t => t.kind === 'subtitles' || t.kind === 'captions');
+
+        if (audioTracks.length === 0 && subs.length === 0) {
+            this.infoContainer.style.display = 'none';
+            return;
+        }
+
+        let html = '<div style="display:flex; gap:20px; flex-wrap:wrap;">';
+
+        // Audio
+        if (audioTracks.length > 0) {
+            html += '<div style="display:flex; flex-direction:column; gap:4px;">';
+            html += '<span style="font-weight:600; color:#fff; display:flex; align-items:center; gap:5px;"><i data-lucide="music" style="width:14px;"></i> Audio</span>';
+            html += '<div style="display:flex; flex-wrap:wrap; gap:8px;">';
+            audioTracks.forEach(t => {
+                const label = t.label || t.language || 'Unknown';
+                const isActive = t.enabled;
+                html += `<span style="background:${isActive ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'}; padding:2px 8px; border-radius:4px; font-size:11px;">${label}</span>`;
+            });
+            html += '</div></div>';
+        }
+
+        // Subs
+        if (subs.length > 0) {
+            html += '<div style="display:flex; flex-direction:column; gap:4px;">';
+            html += '<span style="font-weight:600; color:#fff; display:flex; align-items:center; gap:5px;"><i data-lucide="subtitles" style="width:14px;"></i> Subtitles</span>';
+            html += '<div style="display:flex; flex-wrap:wrap; gap:8px;">';
+            subs.forEach(t => {
+                const label = t.label || t.language || 'Unknown';
+                const isActive = t.mode === 'showing';
+                html += `<span style="background:${isActive ? 'var(--primary-color)' : 'rgba(255,255,255,0.1)'}; padding:2px 8px; border-radius:4px; font-size:11px;">${label}</span>`;
+            });
+            html += '</div></div>';
+        }
+
+        html += '</div>';
+
+        this.infoContainer.innerHTML = html;
+        this.infoContainer.style.display = 'block';
+
+        // Refresh icons if lucide is available
+        if (window.lucide) {
+            lucide.createIcons({ root: this.infoContainer });
+        }
     }
 }
 
