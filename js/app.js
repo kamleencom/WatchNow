@@ -755,7 +755,7 @@ function renderNestedLayout(viewId, dataGroups) {
         btn.tabIndex = 0;
         btn.innerHTML = `
             <div style="display:flex; align-items:center; gap:8px;">
-                ${isFav ? '<i data-lucide="star" style="width:14px; height:14px; color:#ffb020; fill:currentColor;"></i>' : ''}
+                ${isFav ? '<i data-lucide="star" style="width:24px; height:24px; color:#ffb020; fill:currentColor;"></i>' : ''}
                 <span>${group}</span>
             </div>
             <span class="count-badge">${count}</span>
@@ -808,7 +808,6 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
                         <div class="placeholder-icon" style="display:flex; flex-direction:column; align-items:center;">
                             <span style="color: rgba(255,255,255,0.4); font-size: 13px; margin-top: 120px;">Select a channel to play</span>
                         </div>
-                        <div class="nested-player-hint">Click active channel to enter Full Screen</div>
                     </div>
                     <div id="nested-player-info">
                         <div class="info-header">
@@ -883,7 +882,7 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
 
         const grid = document.createElement('div');
         grid.className = 'favorites-grid nested-media-grid'; // Reuse grid class
-        grid.style.padding = '30px'; // Reset padding locally
+        grid.style.padding = '40px'; // Reset padding locally
 
         // If many items, maybe we need virtualization or batching? 
         // For now, render all (limit if needed)
@@ -1012,7 +1011,7 @@ async function handleNestedMediaClick(item, type, cardElement) {
                  ${episodesHtml}
                  
                  <div class="player-column">
-                    <div id="nested-vod-player-container">
+                    <div id="nested-player-container">
                          <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; color:gray; background:#000;">
                              <div style="text-align:center;">
                                  <i data-lucide="play-circle" style="width:50px; height:50px; opacity:0.5; margin-bottom:10px;"></i>
@@ -1034,7 +1033,7 @@ async function handleNestedMediaClick(item, type, cardElement) {
     });
 
     // Player Init Function
-    const playContent = (streamUrl, containerId = '#nested-vod-player-container') => {
+    const playContent = (streamUrl, containerId = '#nested-player-container') => {
         const container = panel.querySelector(containerId);
 
         container.innerHTML = '';
