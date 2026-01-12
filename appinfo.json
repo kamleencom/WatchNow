@@ -1,11 +1,23 @@
 {
   "id": "com.okplayer.app",
-  "version": "0.0.18",
+  "version": "0.0.27",
   "vendor": "Softmej",
   "type": "web",
   "main": "index.html",
   "title": "OK Player",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
-  "splashBackground": "splash.png"
+  "splashBackground": "splash.png",
+  "requiredPermissions": [
+    "time",
+    "system.read",
+    "settings.read",
+    "network"
+  ],
+  "permissions": [
+    "time",
+    "system.read",
+    "settings.read",
+    "network"
+  ]
 }

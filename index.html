@@ -179,7 +179,9 @@
 
 			<!-- Settings View -->
 			<section id="settings" class="view-section">
-				<h1>Settings</h1>
+				<header class="section-header">
+					<h1>Settings</h1>
+				</header>
 				<div class="settings-container">
 					<div class="setting-item focusable" tabindex="0">
 						<div class="setting-info">
@@ -198,6 +200,32 @@
 							<span class="setting-description">Reset app and remove all playlists</span>
 						</div>
 						<button id="reset-app-btn" class="btn btn-danger">Reset App</button>
+					</div>
+
+					<div class="setting-item">
+						<div class="setting-info" style="width:100%">
+							<span class="setting-label" style="margin-bottom:15px; display:block;">Device
+								Information</span>
+							<div class="device-details-grid"
+								style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 0.9em; opacity: 0.8; color: var(--text-secondary);">
+								<div><span
+										style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">Model</span>
+									<span id="device-model" style="font-weight:600;">-</span>
+								</div>
+								<div><span style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">SDK
+										Version</span> <span id="device-sdk" style="font-weight:600;">-</span></div>
+								<div><span
+										style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">Firmware</span>
+									<span id="device-firmware" style="font-weight:600;">-</span>
+								</div>
+								<div><span style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">Device
+										Name</span> <span id="device-name" style="font-weight:600;">-</span></div>
+								<div style="grid-column: span 2;"><span
+										style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">OKP
+										ID</span> <span id="device-mac"
+										style="font-family:monospace; font-weight:600;">-</span></div>
+							</div>
+						</div>
 					</div>
 				</div>
 			</section>

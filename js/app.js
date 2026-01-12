@@ -1771,8 +1771,8 @@ function setupSearch() {
         // Render simple Grid for results
         const grid = document.createElement('div');
         grid.style.display = 'grid';
-        grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(160px, 1fr))';
-        grid.style.gap = '20px';
+        grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(280px, 1fr))';
+        grid.style.gap = '40px';
 
         displayMatches.forEach(item => {
             const card = createCard(item, item.type === 'channels' ? 'live' : item.type);
@@ -1820,6 +1820,156 @@ function setupSettings() {
             }
         });
     }
+
+    // Load Device Info
+    loadDeviceInfo();
+}
+
+function loadDeviceInfo() {
+    // If not on webOS (e.g. browser testing), set placeholders
+    if (typeof webOS === 'undefined') {
+        const els = ['device-model', 'device-sdk', 'device-firmware', 'device-name', 'device-mac'];
+        els.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = 'Simulator';
+        });
+        return;
+    }
+
+    // 1. System Info (Model, SDK, Firmware) - CORRECT SERVICE FOR TV
+    webOS.service.request("luna://com.webos.service.tv.systemproperty", {
+        method: "getSystemInfo",
+        parameters: {
+            keys: ["modelName", "sdkVersion", "firmwareVersion"]
+        },
+        onSuccess: function (inResponse) {
+            if (inResponse.modelName) document.getElementById('device-model').textContent = inResponse.modelName;
+            if (inResponse.sdkVersion) document.getElementById('device-sdk').textContent = inResponse.sdkVersion;
+            if (inResponse.firmwareVersion) document.getElementById('device-firmware').textContent = inResponse.firmwareVersion;
+        },
+        onFailure: function (inError) {
+            // Fallback for older webOS or non-TV profiles
+            console.error("Failed to get tv system info, trying generic...", inError);
+            retryGenericSystemInfo();
+        }
+    });
+
+    function retryGenericSystemInfo() {
+        webOS.service.request("luna://com.webos.service.systemservice", {
+            method: "getSystemInfo",
+            parameters: { keys: ["modelName", "sdkVersion", "firmwareVersion"] },
+            onSuccess: function (inResponse) {
+                if (inResponse.modelName) document.getElementById('device-model').textContent = inResponse.modelName;
+                if (inResponse.sdkVersion) document.getElementById('device-sdk').textContent = inResponse.sdkVersion;
+                if (inResponse.firmwareVersion) document.getElementById('device-firmware').textContent = inResponse.firmwareVersion;
+            },
+            onFailure: function (inError) {
+                document.getElementById('device-model').textContent = "Error " + (inError.errorCode || '');
+                document.getElementById('device-sdk').textContent = "Error";
+                document.getElementById('device-firmware').textContent = "Error";
+            }
+        });
+    }
+
+    // 2. Device Name
+    webOS.service.request("luna://com.webos.service.settings", {
+        method: "getSystemSettings",
+        parameters: {
+            category: "network",
+            keys: ["deviceName"]
+        },
+        onSuccess: function (inResponse) {
+            if (inResponse.settings && inResponse.settings.deviceName) {
+                document.getElementById('device-name').textContent = inResponse.settings.deviceName;
+            } else {
+                document.getElementById('device-name').textContent = 'N/A';
+            }
+        },
+        onFailure: function (inError) {
+            console.error("Failed to get device name", inError);
+            document.getElementById('device-name').textContent = "Error " + (inError.errorCode || '');
+        }
+    });
+
+    // 3. OKP ID (Derived from LGUDID or Virtual ID)
+    const updateOkpUi = (finalId) => {
+        const el = document.getElementById('device-mac');
+        if (el) {
+            el.textContent = finalId;
+        }
+    };
+
+    const setOkpId = (rawId) => {
+        const okpId = generateDeterministicMac(rawId);
+        console.log("Raw ID:", rawId, "-> OKP ID:", okpId);
+        localStorage.setItem('watchnow_okp_id', okpId);
+        updateOkpUi(okpId);
+    };
+
+    // Check if we already have a generated OKP ID saved
+    const storedOkpId = localStorage.getItem('watchnow_okp_id');
+    if (storedOkpId) {
+        updateOkpUi(storedOkpId);
+        // We still log it or check it? No, user wants it saved and used.
+    } else {
+        // Not found, try to fetch UDID and generate it
+        webOS.service.request("luna://com.webos.service.sm", {
+            method: "deviceid/getIDs",
+            parameters: {
+                "idType": ["LGUDID"]
+            },
+            onSuccess: function (inResponse) {
+                let deviceId = null;
+                if (inResponse.idList && inResponse.idList.length > 0 && inResponse.idList[0].idValue) {
+                    deviceId = inResponse.idList[0].idValue;
+                    setOkpId(deviceId);
+                } else {
+                    useVirtualId();
+                }
+            },
+            onFailure: function (inError) {
+                console.error("Failed to get device ID", inError);
+                useVirtualId();
+            }
+        });
+    }
+
+    function useVirtualId() {
+        let vId = localStorage.getItem('watchnow_virtual_device_id');
+        if (!vId) {
+            vId = 'virtual_' + Math.random().toString(36).substr(2) + Date.now();
+            localStorage.setItem('watchnow_virtual_device_id', vId);
+        }
+        setOkpId(vId);
+    }
+}
+
+function generateDeterministicMac(input) {
+    if (!input) return "00:00:00:00:00:00";
+
+    // Expand string if too short
+    let str = input;
+    while (str.length < 20) {
+        str += input;
+    }
+
+    let hash = 0;
+    const hexParts = [];
+
+    // We want 6 bytes (12 hex chars). 
+    // We'll generate them by summing character codes in 6 overlapping windows.
+    for (let i = 0; i < 6; i++) {
+        let sum = 0;
+        // Stride through the string
+        for (let j = i; j < str.length; j += 6) {
+            sum += str.charCodeAt(j);
+        }
+        // Mix a bit
+        sum = (sum * (i + 1)) % 256;
+        hexParts.push(sum.toString(16).padStart(2, '0').toUpperCase());
+    }
+
+    return hexParts.join(':');
 }
 
 function showLoading(show) {
@@ -1992,7 +2142,7 @@ function createBucketCard(bucket) {
     const card = document.createElement('div');
     card.className = 'card card-bucket focusable';
     card.tabIndex = 0;
-    card.style.height = '140px';
+    card.style.height = '200px';
     card.style.aspectRatio = '3/2';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
@@ -2083,8 +2233,8 @@ function openBucket(bucket) {
     // Create a Grid Layout for the bucket view instead of horizontal scroll
     const grid = document.createElement('div');
     grid.style.display = 'grid';
-    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(160px, 1fr))';
-    grid.style.gap = '20px';
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(280px, 1fr))';
+    grid.style.gap = '40px';
 
     // Render first 100 items for performance, add "Load More" if needed
     items.slice(0, 100).forEach(item => {
