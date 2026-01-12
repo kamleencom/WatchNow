@@ -45,7 +45,10 @@ const MIME_TYPES = {
     'mpd': 'application/dash+xml',
     'mp4': 'video/mp4',
     'webm': 'video/webm',
-    'mkv': 'video/webm'
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mkv': 'video/webm',
+    'ts': 'application/x-mpegURL'
 };
 
 class VideoPlayerService {
@@ -247,12 +250,15 @@ class VideoPlayerService {
 
         let url = originalUrl;
 
-        // Fix: Convert .ts to .m3u8 for HLS compatibility
-        if (/\.ts($|\?)/i.test(url)) {
+        // Fix: Convert .ts to .m3u8 for HLS compatibility (EXCEPT for timeshift URLs)
+        // Check for both path-based timeshift (/timeshift/) and PHP endpoint (/streaming/timeshift.php)
+        const isTimeshiftUrl = url.includes('/timeshift/') || url.includes('/streaming/timeshift.php');
+        if (/\.ts($|\?)/i.test(url) && !isTimeshiftUrl) {
             url = url.replace(/\.ts($|\?)/i, (match) => match.replace('.ts', '.m3u8'));
         }
         // Fix: Ensure live streams have extensions (some servers need this)
-        else if ((type === 'live' || type === 'channels') && !/\.(m3u8|ts|mp4|mkv|mpd)($|\?)/i.test(url)) {
+        // Skip timeshift URLs as they handle streaming directly
+        else if ((type === 'live' || type === 'channels') && !isTimeshiftUrl && !/\.(m3u8|ts|mp4|mkv|mpd|php)($|\?)/i.test(url)) {
             if (url.includes('?')) {
                 const parts = url.split('?');
                 url = `${parts[0]}.m3u8?${parts[1]}`;

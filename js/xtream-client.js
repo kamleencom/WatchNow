@@ -64,12 +64,14 @@ class XtreamClient {
         const data = {
             channels: {},
             movies: {},
-            series: {}
+            series: {},
+            catchup: {}
         };
         const stats = {
             channels: 0,
             movies: 0,
-            series: 0
+            series: 0,
+            catchup: 0
         };
 
         // Parallel Fetching of Categories
@@ -104,15 +106,26 @@ class XtreamClient {
                     const catName = liveCatMap[stream.category_id] || 'Uncategorized';
                     if (!data.channels[catName]) data.channels[catName] = [];
 
-                    data.channels[catName].push({
+                    const channelItem = {
                         title: stream.name,
                         logo: stream.stream_icon,
                         group: catName,
                         url: `${this.baseUrl}/live/${this.username}/${this.password}/${stream.stream_id}.ts`,
                         id: stream.stream_id,
-                        epg_id: stream.epg_channel_id
-                    });
+                        epg_id: stream.epg_channel_id,
+                        tv_archive: stream.tv_archive,
+                        tv_archive_duration: stream.tv_archive_duration
+                    };
+
+                    data.channels[catName].push(channelItem);
                     stats.channels++;
+
+                    // Catchup Logic
+                    if (stream.tv_archive == 1) {
+                        if (!data.catchup[catName]) data.catchup[catName] = [];
+                        data.catchup[catName].push(channelItem);
+                        stats.catchup++;
+                    }
                 });
             }
         } catch (e) {
@@ -179,6 +192,12 @@ class XtreamClient {
 
     async getSeriesInfo(seriesId) {
         return this.fetchJson('get_series_info', { series_id: seriesId });
+    }
+
+    async getEpg(streamId, limit = 50) {
+        // Xtream Codes usually supports get_simple_data_table for EPG
+        // Returns { epg_listings: [ { start, end, title, description, start_timestamp, stop_timestamp } ] }
+        return this.fetchJson('get_simple_data_table', { stream_id: streamId, limit: limit });
     }
 
     mapCategories(cats) {

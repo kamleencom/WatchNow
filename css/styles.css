@@ -250,6 +250,88 @@ body {
     display: block;
 }
 
+/* Catchup List */
+.catchup-programs-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.catchup-list {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+.catchup-program-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.catchup-program-item:hover,
+.catchup-program-item.active,
+.catchup-program-item:focus {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateX(5px);
+}
+
+.catchup-time {
+    display: flex;
+    flex-direction: column;
+    min-width: 60px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    text-align: center;
+}
+
+.c-time {
+    font-weight: bold;
+    color: #fff;
+    font-size: 14px;
+}
+
+.catchup-details {
+    flex: 1;
+    overflow: hidden;
+}
+
+.c-title {
+    font-weight: 500;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.c-desc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.catchup-play-icon {
+    opacity: 0.5;
+}
+
+.catchup-program-item:hover .catchup-play-icon {
+    opacity: 1;
+    color: var(--primary-color);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -412,7 +494,7 @@ h2 {
     flex-direction: column;
     gap: 24px;
     width: 100%;
-    padding: 30px 10px;
+    padding: 30px 30px;
     flex: 1;
     overflow-y: auto;
     padding-bottom: 80px;
@@ -582,8 +664,9 @@ h2 {
     display: flex;
     flex-direction: column;
     gap: 24px;
-    max-width: 900px;
-    padding: 30px 10px;
+    width: 100%;
+    max-width: 100%;
+    padding: 30px 30px;
 }
 
 .setting-item {
@@ -611,13 +694,13 @@ h2 {
 }
 
 .setting-label {
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .setting-description {
-    font-size: 16px;
+    font-size: 20px;
     color: var(--text-secondary);
 }
 
@@ -661,6 +744,47 @@ h2 {
     text-align: center;
 }
 
+/* Device Info */
+.setting-info-full {
+    width: 100%;
+}
+
+.device-section-title {
+    display: block;
+    margin-bottom: 15px;
+}
+
+.device-details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    font-size: 0.9em;
+    opacity: 0.8;
+    color: var(--text-secondary);
+    width: 100%;
+}
+
+.device-detail-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.device-detail-item.full-width {
+    grid-column: span 2;
+}
+
+.device-label {
+    color: #fff;
+    display: block;
+    font-size: 20px;
+    margin-bottom: 8px;
+}
+
+.device-value {
+    font-weight: 600;
+    font-size: 24px;
+}
+
 /* Search */
 .search-bar-container {
     width: 100%;
@@ -686,7 +810,7 @@ h2 {
 }
 
 #search-results {
-    padding: 30px 10px;
+    padding: 30px 30px;
 }
 
 /* --- Modals --- */
@@ -1010,7 +1134,7 @@ video[src=''] {
 
 /* --- Favorites Feature Styles --- */
 #favorites-content {
-    padding: 30px 10px;
+    padding: 30px 30px;
 }
 
 /* Favorites Hint */
@@ -1768,7 +1892,11 @@ video[src=''] {
     flex-direction: column;
     height: 100%;
     width: 100%;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
     padding: 12px;
 }
 
@@ -1791,6 +1919,9 @@ video[src=''] {
 #nested-player-info {
     padding: 12px;
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .info-header {

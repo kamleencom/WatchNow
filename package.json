@@ -1,9 +1,12 @@
 {
   "name": "ok-player",
-  "version": "0.0.27",
+  "version": "0.0.35",
   "description": "Local scripts to fix webos cli",
   "dependencies": {
     "@enact/webos": "^5.4.1",
     "@webos-tools/cli": "^3.2.1"
+  },
+  "devDependencies": {
+    "lucide-static": "^0.562.0"
   }
 }

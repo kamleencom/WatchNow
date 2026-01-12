@@ -13,7 +13,8 @@ const state = {
     aggregatedData: {
         channels: {},
         movies: {},
-        series: {}
+        series: {},
+        catchup: {}
     },
     favorites: {
         channels: [], // Array of favorite channel items
@@ -132,7 +133,7 @@ function addResource(name, url, options = {}) {
         active: true,
         isLoading: false,
         status: 'pending',
-        stats: { channels: 0, movies: 0, series: 0 },
+        stats: { channels: 0, movies: 0, series: 0, catchup: 0 },
         lastSynced: null,
         data: null,
         type: options.type || 'm3u',
@@ -265,7 +266,8 @@ async function getPlaylistFromChunks(resourceId) {
                 const result = {
                     channels: {},
                     movies: {},
-                    series: {}
+                    series: {},
+                    catchup: {}
                 };
 
                 chunks.forEach(chunk => {
@@ -446,7 +448,7 @@ async function syncResource(res) {
             // To be consistent with chunking, we can split it, or just save as chunk 0
             // Since we have the processed data structure directly:
             const items = [];
-            ['channels', 'movies', 'series'].forEach(cat => {
+            ['channels', 'movies', 'series', 'catchup'].forEach(cat => {
                 Object.keys(result.data[cat]).forEach(group => {
                     result.data[cat][group].forEach(item => {
                         item.category = cat;
@@ -675,11 +677,12 @@ function aggregateData() {
     const result = {
         channels: {},
         movies: {},
-        series: {}
+        series: {},
+        catchup: {}
     };
 
     state.resources.filter(r => r.active && r.data).forEach(res => {
-        ['channels', 'movies', 'series'].forEach(cat => {
+        ['channels', 'movies', 'series', 'catchup'].forEach(cat => {
             const groups = res.data[cat];
             Object.keys(groups).forEach(groupName => {
                 if (!result[cat][groupName]) {
@@ -705,6 +708,7 @@ function renderContentViews() {
     renderNestedLayout('live', state.aggregatedData.channels);
     renderNestedLayout('movies', state.aggregatedData.movies);
     renderNestedLayout('series', state.aggregatedData.series);
+    renderNestedLayout('catchup', state.aggregatedData.catchup);
 }
 
 function renderNestedLayout(viewId, dataGroups) {
@@ -733,7 +737,7 @@ function renderNestedLayout(viewId, dataGroups) {
 
     // 2. Items Sidebar (Only for Live TV channels list)
     let itemsSidebar = null;
-    if (viewId === 'live') {
+    if (viewId === 'live' || viewId === 'catchup') {
         itemsSidebar = document.createElement('div');
         itemsSidebar.id = `items-panel-${viewId}`;
         itemsSidebar.className = 'nested-sidebar items-sidebar';
@@ -747,7 +751,7 @@ function renderNestedLayout(viewId, dataGroups) {
     // Populate Categories
     groups.forEach(group => {
         const count = dataGroups[group].length;
-        const bucketType = viewId === 'live' ? 'channels' : viewId;
+        const bucketType = (viewId === 'live' || viewId === 'catchup') ? 'channels' : viewId;
         const isFav = isBucketFavorite(group, bucketType);
 
         const btn = document.createElement('div');
@@ -791,7 +795,7 @@ function renderNestedLayout(viewId, dataGroups) {
 }
 
 function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, contentArea) {
-    if (viewId === 'live') {
+    if (viewId === 'live' || viewId === 'catchup') {
         // Show Channels Sidebar
         itemsSidebar.classList.add('visible');
         const listContainer = itemsSidebar.querySelector('.nested-list');
@@ -822,13 +826,19 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
                                 </div>
                             </div>
                         </div>
+                        ${viewId === 'catchup' ? `
+                            <div class="catchup-programs-container">
+                                <h3 style="margin-bottom:10px; font-size:16px; color:#ddd;">Previous Programs</h3>
+                                <div id="catchup-list" class="catchup-list">
+                                    <div style="padding:20px; text-align:center; color:#666;">Select a channel to view previous programs.</div>
+                                </div>
+                            </div>
+                        ` : `
                         <div class="program-info">
                             <h3 id="nested-program-title">No Program Information</h3>
                             <p id="nested-program-desc" class="program-description">Select a channel from the list to start watching.</p>
-                            <!-- <div class="progress-bar-container">
-                                <div class="progress-bar" style="width: 0%"></div>
-                            </div> -->
                         </div>
+                        `}
                     </div>
                 </div>
             `;
@@ -852,6 +862,11 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
                 const playerContainer = contentArea.querySelector('#nested-player-container');
                 if (playerContainer) {
                     VideoPlayer.play(item, 'live', playerContainer);
+
+                    // IF CATCHUP: Fetch EPG
+                    if (viewId === 'catchup') {
+                        loadCatchupEpg(item, contentArea);
+                    }
                 } else {
                     console.error("Player container not found!");
                 }
@@ -1112,9 +1127,194 @@ async function handleNestedMediaClick(item, type, cardElement) {
         });
 
     } else {
-        panel.querySelector('.play-now-btn')?.addEventListener('click', () => {
-            playContent(item.url);
+        var playBtn = panel.querySelector('.play-now-btn');
+        if (playBtn) {
+            playBtn.addEventListener('click', () => {
+                playContent(item.url);
+            });
+        }
+    }
+}
+
+async function loadCatchupEpg(item, contentArea) {
+    const listDiv = contentArea.querySelector('#catchup-list');
+    if (!listDiv) return;
+
+    listDiv.innerHTML = '<div class="spinner"></div>';
+
+    // Find credentials
+    const resource = state.resources.find(r => r.name === item.source);
+    if (!resource || !resource.credentials) {
+        listDiv.innerHTML = '<div style="padding:10px;">Error: No credentials found for this stream.</div>';
+        return;
+    }
+
+    const { host, username, password } = resource.credentials;
+    const client = new XtreamClient(host, username, password);
+
+    // Store channel ID before entering the EPG loop (item.id is the channel's stream_id)
+    const channelId = item.id;
+    const channelTitle = item.title;
+
+    try {
+        const epgData = await client.getEpg(channelId);
+        const listings = epgData.epg_listings || [];
+
+        console.log(`[CatchUp] Channel ID: ${channelId}, Title: ${channelTitle}`);
+        console.log(`[CatchUp] EPG listings:`, listings);
+
+        if (listings.length === 0) {
+            listDiv.innerHTML = '<div style="padding:10px;">No catchup programs available.</div>';
+            return;
+        }
+
+        listDiv.innerHTML = '';
+
+        // Filter for past programs only? Or show all? Usually Catchup implies past.
+        // We sort by time descending (newest first)
+        const now = Date.now() / 1000;
+
+        // Sort listings: Newest first (Descending start_timestamp)
+        listings.sort((a, b) => {
+            const tA = parseInt(a.start_timestamp) || 0;
+            const tB = parseInt(b.start_timestamp) || 0;
+            return tB - tA;
         });
+
+        // XTREAM EPG timestamps are sometimes strings or numbers. Verify.
+        // Usually they are standard unix timestamps? Or need conversion.
+        // If start_timestamp is missing, we might need to parse `start`.
+
+        listings.forEach(prog => {
+            const hasArchive = prog.has_archive || 1; // Assume generic check if API doesn't specify, but we are in catchup section so..
+            if (!hasArchive) return;
+
+            // Construct start/end Date objects
+            // XTREAM often returns "start" as "2023-10-10 10:00:00" string
+            // and start_timestamp as unix epoch integer. Use timestamp if available.
+
+            let startTs = parseInt(prog.start_timestamp);
+            let endTs = parseInt(prog.stop_timestamp);
+
+            // If invalid start, skip
+            if (isNaN(startTs)) return;
+
+            // If invalid end, try to calculate from simple duration if available, or skip to be safe?
+            // Usually Xtream provides stop_timestamp. 
+            // If missing, we can't be sure it's finished.
+            if (isNaN(endTs)) {
+                // Try parsing numbers?
+                // If strictly missing, let's assume valid catchup items must have end time.
+                return;
+            }
+
+            // FILTER: 
+            // 1. Future starts
+            // 2. Incomplete programs (End time is in future)
+            // Buffer: Add 60s buffer to ensure file is closed
+            if (startTs > now || endTs > (now - 60)) return;
+
+            // Format Time
+            const date = new Date(startTs * 1000);
+            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const dateStr = date.toLocaleDateString();
+
+            const progEl = document.createElement('div');
+            progEl.className = 'catchup-program-item focusable';
+            progEl.tabIndex = 0;
+            progEl.innerHTML = `
+                <div class="catchup-time">
+                    <span class="c-time">${timeStr}</span>
+                    <span class="c-date">${dateStr}</span>
+                </div>
+                <div class="catchup-details">
+                    <div class="c-title">${prog.title}</div>
+                    <div class="c-desc">${prog.description ? atob(prog.description) : ''}</div> 
+                </div> 
+                <div class="catchup-play-icon"><i data-lucide="play-circle"></i></div>
+            `;
+            // Note: description comes base64 encoded often in Xtream `get_simple_data_table`? 
+            // Keep eye on this. Some servers return plain text. If atob fails we fallback.
+
+            // Verify base64
+            let desc = prog.description || '';
+            try {
+                if (desc && /^[A-Za-z0-9+/=]+$/.test(desc.trim())) {
+                    desc = atob(desc);
+                }
+            } catch (e) { }
+            progEl.querySelector('.c-desc').textContent = desc;
+
+            // Decode Title if needed
+            let title = prog.title || '';
+            try {
+                if (title && /^[A-Za-z0-9+/=]+$/.test(title.trim())) {
+                    title = atob(title.trim());
+                }
+            } catch (e) { }
+            progEl.querySelector('.c-title').textContent = title;
+
+
+            progEl.addEventListener('click', async () => {
+                // Play Catchup - Try multiple URL formats
+                const durationSeconds = endTs - startTs;
+                const durationMinutes = Math.floor(durationSeconds / 60);
+
+                // Start Format: YYYY-MM-DD:HH-MM
+                let startFormatted;
+                if (prog.start) {
+                    const parts = prog.start.split(' ');
+                    if (parts.length >= 2) {
+                        const datePart = parts[0];
+                        const timePart = parts[1].substring(0, 5).replace(':', '-');
+                        startFormatted = `${datePart}:${timePart}`;
+                    }
+                }
+
+                if (!startFormatted) {
+                    const y = date.getFullYear();
+                    const m = String(date.getMonth() + 1).padStart(2, '0');
+                    const d = String(date.getDate()).padStart(2, '0');
+                    const H = String(date.getHours()).padStart(2, '0');
+                    const M = String(date.getMinutes()).padStart(2, '0');
+                    startFormatted = `${y}-${m}-${d}:${H}-${M}`;
+                }
+
+
+
+                // Format date as YYYY-MM-DD
+                // const dateOnly = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+                // Catchup URL format: /timeshift/user/pass/{duration_minutes}/{date:hour-hour}/{channel_id}.m3u8
+                const url = `${host}/timeshift/${username}/${password}/${durationMinutes}/${startFormatted}/${channelId}.m3u8`;
+
+                console.log("Duration Minutes:", durationMinutes);
+                console.log("Start Formatted:", startFormatted);
+                console.log("========== CATCHUP DEBUG ==========");
+                console.log("Channel:", channelTitle, "Channel ID:", channelId);
+                console.log("Duration:", durationMinutes, "minutes");
+                console.log("URL:", url);
+                console.log("===================================");
+
+                const playerContainer = contentArea.querySelector('#nested-player-container');
+                VideoPlayer.play({
+                    url: url,
+                    title: `[Catch Up] ${prog.title}`
+                }, 'live', playerContainer);
+            });
+
+            progEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') progEl.click();
+            });
+
+            listDiv.appendChild(progEl);
+        });
+
+        lucide.createIcons({ root: listDiv });
+
+    } catch (e) {
+        console.error("EPG Error", e);
+        listDiv.innerHTML = '<div style="padding:10px;">Error loading programs.</div>';
     }
 }
 
@@ -1355,9 +1555,9 @@ function renderResourcesList() {
                 <div class="resource-url">${res.url}</div>
                 
                 <div class="resource-stats">
-                    <div class="stat-badge"><span class="icon"><i data-lucide="tv"></i></span> ${res.stats?.channels || 0}</div>
-                    <div class="stat-badge"><span class="icon"><i data-lucide="film"></i></span> ${res.stats?.movies || 0}</div>
-                    <div class="stat-badge"><span class="icon"><i data-lucide="clapperboard"></i></span> ${res.stats?.series || 0}</div>
+                    <div class="stat-badge"><span class="icon"><i data-lucide="tv"></i></span> ${(res.stats && res.stats.channels) || 0}</div>
+                    <div class="stat-badge"><span class="icon"><i data-lucide="film"></i></span> ${(res.stats && res.stats.movies) || 0}</div>
+                    <div class="stat-badge"><span class="icon"><i data-lucide="clapperboard"></i></span> ${(res.stats && res.stats.series) || 0}</div>
                 </div>
             </div>
 

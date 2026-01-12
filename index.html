@@ -18,7 +18,7 @@
 	<script src="webOSTVjs-1.2.10/webOSTV.js" charset="utf-8"></script>
 
 	<!-- Icons -->
-	<script src="https://unpkg.com/lucide@latest"></script>
+	<script src="js/icons.js"></script>
 
 
 </head>
@@ -55,6 +55,9 @@
 					</div>
 					<div class="nav-item focusable auto-trigger" data-target="series" tabindex="0">
 						<span class="icon"><i data-lucide="clapperboard"></i></span>
+					</div>
+					<div class="nav-item focusable auto-trigger" data-target="catchup" tabindex="0">
+						<span class="icon"><i data-lucide="clock"></i></span>
 					</div>
 
 				</div>
@@ -164,6 +167,16 @@
 				</div>
 			</section>
 
+			<!-- Catch Up View -->
+			<section id="catchup" class="view-section">
+				<header class="section-header">
+					<h1>Catch Up</h1>
+				</header>
+				<div class="content-rows" id="catchup-rows">
+					<!-- Rows injected here -->
+				</div>
+			</section>
+
 			<!-- Resources View (Playlist Manager) -->
 			<section id="resources" class="view-section">
 				<header class="section-header">
@@ -203,27 +216,29 @@
 					</div>
 
 					<div class="setting-item">
-						<div class="setting-info" style="width:100%">
-							<span class="setting-label" style="margin-bottom:15px; display:block;">Device
-								Information</span>
-							<div class="device-details-grid"
-								style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 0.9em; opacity: 0.8; color: var(--text-secondary);">
-								<div><span
-										style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">Model</span>
-									<span id="device-model" style="font-weight:600;">-</span>
+						<div class="setting-info setting-info-full">
+							<span class="setting-label device-section-title">Device Information</span>
+							<div class="device-details-grid">
+								<div class="device-detail-item">
+									<span class="device-label">Model</span>
+									<span id="device-model" class="device-value">-</span>
 								</div>
-								<div><span style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">SDK
-										Version</span> <span id="device-sdk" style="font-weight:600;">-</span></div>
-								<div><span
-										style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">Firmware</span>
-									<span id="device-firmware" style="font-weight:600;">-</span>
+								<div class="device-detail-item">
+									<span class="device-label">SDK Version</span>
+									<span id="device-sdk" class="device-value">-</span>
 								</div>
-								<div><span style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">Device
-										Name</span> <span id="device-name" style="font-weight:600;">-</span></div>
-								<div style="grid-column: span 2;"><span
-										style="color:#fff; display:block; font-size:0.8em; margin-bottom:2px;">OKP
-										ID</span> <span id="device-mac"
-										style="font-family:monospace; font-weight:600;">-</span></div>
+								<div class="device-detail-item">
+									<span class="device-label">Firmware</span>
+									<span id="device-firmware" class="device-value">-</span>
+								</div>
+								<div class="device-detail-item">
+									<span class="device-label">Device Name</span>
+									<span id="device-name" class="device-value">-</span>
+								</div>
+								<div class="device-detail-item full-width">
+									<span class="device-label">OKP ID</span>
+									<span id="device-mac" class="device-value">-</span>
+								</div>
 							</div>
 						</div>
 					</div>
