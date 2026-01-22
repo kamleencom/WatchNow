@@ -19,7 +19,11 @@ const USED_ICONS = [
     'arrow-left',
     'play',
     'play-circle',
-    'check'
+    'check',
+    'refresh-cw',
+    'trash-2',
+    'folder',
+    'x-circle'
 ];
 
 const ICONS_DIR = path.join(__dirname, '../node_modules/lucide-static/icons');

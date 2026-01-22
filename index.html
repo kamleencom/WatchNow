@@ -91,7 +91,11 @@
 			<section id="search" class="view-section">
 				<header class="section-header">
 					<h1>Search</h1>
-					<div class="search-bar-container">
+					<div class="search-bar-container" style="display: flex; align-items: center;">
+						<button class="search-reset-btn focusable" style="display:none;"
+							data-target="global-search-input">
+							<i data-lucide="x-circle"></i>
+						</button>
 						<input type="text" id="global-search-input" class="focusable"
 							placeholder="Search movies, series, channels...">
 					</div>
@@ -143,6 +147,17 @@
 			<section id="live" class="view-section active">
 				<header class="section-header">
 					<h1>Live TV</h1>
+					<div class="header-search-wrapper" style="display: flex; align-items: center;">
+						<button class="search-reset-btn focusable" style="display:none;"
+							data-target="live-search-input">
+							<i data-lucide="x-circle"></i>
+						</button>
+						<div class="header-search-container">
+							<i data-lucide="search" class="header-search-icon"></i>
+							<input type="text" id="live-search-input" class="header-search-input focusable"
+								placeholder="Search channels...">
+						</div>
+					</div>
 				</header>
 				<div class="content-rows" id="live-rows">
 					<!-- Rows injected here -->
@@ -153,6 +168,17 @@
 			<section id="movies" class="view-section">
 				<header class="section-header">
 					<h1>Movies</h1>
+					<div class="header-search-wrapper" style="display: flex; align-items: center;">
+						<button class="search-reset-btn focusable" style="display:none;"
+							data-target="movies-search-input">
+							<i data-lucide="x-circle"></i>
+						</button>
+						<div class="header-search-container">
+							<i data-lucide="search" class="header-search-icon"></i>
+							<input type="text" id="movies-search-input" class="header-search-input focusable"
+								placeholder="Search movies...">
+						</div>
+					</div>
 				</header>
 				<div class="content-rows" id="movies-rows">
 				</div>
@@ -162,6 +188,17 @@
 			<section id="series" class="view-section">
 				<header class="section-header">
 					<h1>Series</h1>
+					<div class="header-search-wrapper" style="display: flex; align-items: center;">
+						<button class="search-reset-btn focusable" style="display:none;"
+							data-target="series-search-input">
+							<i data-lucide="x-circle"></i>
+						</button>
+						<div class="header-search-container">
+							<i data-lucide="search" class="header-search-icon"></i>
+							<input type="text" id="series-search-input" class="header-search-input focusable"
+								placeholder="Search series...">
+						</div>
+					</div>
 				</header>
 				<div class="content-rows" id="series-rows">
 				</div>
@@ -171,6 +208,17 @@
 			<section id="catchup" class="view-section">
 				<header class="section-header">
 					<h1>Catch Up</h1>
+					<div class="header-search-wrapper" style="display: flex; align-items: center;">
+						<button class="search-reset-btn focusable" style="display:none;"
+							data-target="catchup-search-input">
+							<i data-lucide="x-circle"></i>
+						</button>
+						<div class="header-search-container">
+							<i data-lucide="search" class="header-search-icon"></i>
+							<input type="text" id="catchup-search-input" class="header-search-input focusable"
+								placeholder="Search channels...">
+						</div>
+					</div>
 				</header>
 				<div class="content-rows" id="catchup-rows">
 					<!-- Rows injected here -->
@@ -321,9 +369,13 @@
 	<style>
 		.modal-tabs {
 			display: flex;
-			gap: 10px;
+			/* gap: 10px; */
 			margin-bottom: 20px;
 			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		}
+
+		.modal-tabs>*+* {
+			margin-left: 10px;
 		}
 
 		.modal-tab {
@@ -334,6 +386,7 @@
 			cursor: pointer;
 			border-bottom: 2px solid transparent;
 			transition: all 0.2s;
+			font-size: 22px;
 		}
 
 		.modal-tab.active {
@@ -349,6 +402,7 @@
 			display: block;
 		}
 	</style>
+	<script src="js/name-processor.js"></script>
 	<script src="js/parser.js"></script>
 	<script src="js/xtream-client.js"></script>
 	<script src="js/navigation.js"></script>

@@ -24,7 +24,13 @@ const state = {
     },
     currentView: 'live',
     searchQuery: '',
-    focusedItem: null // Currently focused item for yellow button
+    focusedItem: null, // Currently focused item for yellow button
+    categorySearchQuery: {
+        live: '',
+        movies: '',
+        series: '',
+        catchup: ''
+    }
 };
 
 const LINK_CHECK_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
@@ -59,6 +65,29 @@ function saveAppSettings() {
 function isLinkStatusEnabled() {
     return appSettings.linkStatusEnabled;
 }
+
+// Global Image Error Handler to prevent layout thrashing or content deletion
+window.handleChannelLogoError = function (img) {
+    if (!img || !img.parentNode) return;
+
+    // Create replacement icon
+    const span = document.createElement('span');
+    span.className = 'channel-list-icon';
+    // Use innerHTML for the icon SVG placeholder
+    span.innerHTML = '<i data-lucide="tv"></i>';
+
+    // Replace the image with the span
+    try {
+        img.parentNode.replaceChild(span, img);
+
+        // Initialize lucide icons for this new span only
+        if (window.lucide && window.lucide.createIcons) {
+            window.lucide.createIcons({ root: span });
+        }
+    } catch (e) {
+        console.error("Error handling channel logo error", e);
+    }
+};
 
 // --- Initialization ---
 
@@ -444,6 +473,12 @@ async function syncResource(res) {
             const result = await client.fetchAll(res.abortController.signal);
             stats = result.stats;
 
+            // Update stats UI for Xtream sync
+            if (statsEl) {
+                statsEl.textContent = `Channels: ${stats.channels} | Movies: ${stats.movies} | Series: ${stats.series}`;
+            }
+            updateResourceStatusUI(res.id, stats);
+
             // For Xtream we just save one big chunk for now because fetchAll returns full object
             // To be consistent with chunking, we can split it, or just save as chunk 0
             // Since we have the processed data structure directly:
@@ -525,9 +560,8 @@ async function syncResource(res) {
 function updateResourceStatusUI(id, stats) {
     const statusTextEl = document.querySelector(`.resource-item[data-id="${id}"] .status-text`);
     if (statusTextEl) {
-        statusTextEl.textContent = `Syncing... ${stats.channels + stats.movies + stats.series}`;
-        // Or more detailed:
-        // statusTextEl.textContent = `Syncing... Ch:${stats.channels} V:${stats.movies+stats.series}`;
+        // Detailed breakdown: Ch: 100 | M: 50 | S: 20
+        statusTextEl.textContent = `Syncing... Ch:${stats.channels} M:${stats.movies} S:${stats.series}`;
     }
 }
 
@@ -709,6 +743,9 @@ function renderContentViews() {
     renderNestedLayout('movies', state.aggregatedData.movies);
     renderNestedLayout('series', state.aggregatedData.series);
     renderNestedLayout('catchup', state.aggregatedData.catchup);
+
+    // Setup category search after layouts are rendered
+    setupCategorySearchHandlers();
 }
 
 function renderNestedLayout(viewId, dataGroups) {
@@ -755,12 +792,13 @@ function renderNestedLayout(viewId, dataGroups) {
         const isFav = isBucketFavorite(group, bucketType);
 
         const btn = document.createElement('div');
-        btn.className = `nested-list-item focusable auto-trigger ${isFav ? 'favorite-group' : ''}`;
+        btn.className = `nested-list-item focusable ${isFav ? 'favorite-group' : ''}`;
         btn.tabIndex = 0;
+        btn.dataset.category = group; // Store category name for search filtering
         btn.innerHTML = `
-            <div style="display:flex; align-items:center; gap:8px;">
-                ${isFav ? '<i data-lucide="star" style="width:24px; height:24px; color:#ffb020; fill:currentColor;"></i>' : ''}
-                <span>${group}</span>
+            <div style="display:flex; align-items:center;">
+                ${isFav ? '<i data-lucide="star" style="width:24px; height:24px; color:#ffb020; fill:currentColor; margin-right:8px;"></i>' : ''}
+                <span class="category-name">${group}</span>
             </div>
             <span class="count-badge">${count}</span>
         `;
@@ -799,7 +837,37 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
         // Show Channels Sidebar
         itemsSidebar.classList.add('visible');
         const listContainer = itemsSidebar.querySelector('.nested-list');
+        listContainer.scrollTop = 0;
         listContainer.innerHTML = '';
+
+        // Filter items based on current search query (min 2 chars)
+        const rawSearchQuery = state.categorySearchQuery[viewId] || '';
+        const searchQuery = rawSearchQuery.length >= 2 ? rawSearchQuery : '';
+        let filteredItems = items;
+        if (searchQuery) {
+            filteredItems = items.filter(item =>
+                matchSearchQuery(item.title, searchQuery)
+            );
+        }
+
+        // Limit results ONLY when searching for performance
+        const MAX_RESULTS = 150;
+        const totalMatching = filteredItems.length;
+        if (searchQuery && totalMatching > MAX_RESULTS) {
+            filteredItems = filteredItems.slice(0, MAX_RESULTS);
+        }
+
+        // Update channel list header with count
+        const channelHeader = itemsSidebar.querySelector('.nested-header');
+        if (channelHeader) {
+            if (searchQuery && totalMatching < items.length) {
+                const isCapped = totalMatching > MAX_RESULTS;
+                const limitText = isCapped ? ` (Capped at ${MAX_RESULTS})` : '';
+                channelHeader.textContent = `Channels (${isCapped ? MAX_RESULTS : totalMatching}/${items.length})${limitText}`;
+            } else {
+                channelHeader.textContent = 'Channels';
+            }
+        }
 
         // Prepare Embedded Player Area
         const existingPlayer = contentArea.querySelector('#nested-player-container');
@@ -845,9 +913,9 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
             lucide.createIcons({ root: contentArea });
         }
 
-        items.forEach(item => {
+        filteredItems.forEach(item => {
             const btn = document.createElement('div');
-            btn.className = 'nested-list-item focusable auto-trigger';
+            btn.className = 'nested-list-item focusable';
             btn.tabIndex = 0;
             btn.dataset.url = item.url; // ID for state checking
 
@@ -874,13 +942,27 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
 
             // Layout with Logo
             const logoHtml = item.logo
-                ? `<img src="${item.logo}" alt="" class="channel-list-logo" onerror="this.parentElement.innerHTML='<span class=\\'channel-list-icon\\'><i data-lucide=\\'tv\\'></i></span>'; lucide.createIcons();">`
+                ? `<img src="${item.logo}" alt="" class="channel-list-logo" onerror="window.handleChannelLogoError(this)">`
                 : `<span class="channel-list-icon"><i data-lucide="tv"></i></span>`;
 
+            // Badges HTML
+            let badgesHtml = '';
+            if (item.badges && item.badges.length) {
+                badgesHtml = '<div class="channel-badges">';
+                item.badges.forEach(b => {
+                    if (b === 'CATCHUP') badgesHtml += '<span class="badge badge-catchup" title="Catchup Available"><i data-lucide="clock" style="width:10px; height:10px;"></i></span>';
+                    else badgesHtml += `<span class="badge">${b}</span>`;
+                });
+                badgesHtml += '</div>';
+            }
+
             btn.innerHTML = `
-                <div class="channel-list-content">
+                 <div class="channel-list-content">
                     ${logoHtml}
-                    <span class="channel-list-title">${item.title}</span>
+                    <div class="channel-info-row" style="display:flex; align-items:center; flex:1; min-width:0;">
+                        <span class="channel-list-title" style="margin-right:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.title}</span>
+                        ${badgesHtml}
+                    </div>
                 </div>
             `;
 
@@ -893,37 +975,103 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
 
     } else {
         // Movies/Series: Show Grid in Content Area
+        contentArea.scrollTop = 0;
         contentArea.innerHTML = '';
+
+        // Filter items based on current search query (min 2 chars)
+        const rawSearchQuery = state.categorySearchQuery[viewId] || '';
+        const searchQuery = rawSearchQuery.length >= 2 ? rawSearchQuery : '';
+        let filteredItems = items;
+        if (searchQuery) {
+            filteredItems = items.filter(item =>
+                matchSearchQuery(item.title, searchQuery)
+            );
+        }
+
+        // Sort by release date if available (newest first)
+        if (viewId === 'series' || viewId === 'movies') {
+            filteredItems.sort((a, b) => {
+                const parseDate = (val) => {
+                    if (!val) return 0;
+                    // Handle Unix timestamp (often as string)
+                    if (!isNaN(val) && val.toString().length >= 10) {
+                        return parseInt(val) * 1000;
+                    }
+                    const d = new Date(val).getTime();
+                    return isNaN(d) ? 0 : d;
+                };
+                const dateA = parseDate(a.releaseDate);
+                const dateB = parseDate(b.releaseDate);
+                return dateB - dateA;
+            });
+        }
+
+        // Limit results ONLY when searching for performance
+        const MAX_GRID_RESULTS = 150;
+        const totalMatches = filteredItems.length;
+        if (searchQuery && totalMatches > MAX_GRID_RESULTS) {
+            filteredItems = filteredItems.slice(0, MAX_GRID_RESULTS);
+        }
 
         const grid = document.createElement('div');
         grid.className = 'favorites-grid nested-media-grid'; // Reuse grid class
         grid.style.padding = '40px'; // Reset padding locally
+
+        // Capped results indicator
+        if (searchQuery && totalMatches > MAX_GRID_RESULTS) {
+            const cappedNotice = document.createElement('div');
+            cappedNotice.style.gridColumn = '1 / -1';
+            cappedNotice.style.padding = '10px 20px';
+            cappedNotice.style.marginBottom = '20px';
+            cappedNotice.style.background = 'rgba(59, 130, 246, 0.1)';
+            cappedNotice.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+            cappedNotice.style.borderRadius = '8px';
+            cappedNotice.style.color = '#3b82f6';
+            cappedNotice.style.fontSize = '14px';
+            cappedNotice.innerHTML = `<i data-lucide="info" style="width:16px; height:16px; vertical-align:middle; margin-right:8px;"></i> showing first ${MAX_GRID_RESULTS} results for better performance`;
+            grid.appendChild(cappedNotice);
+        }
 
         // If many items, maybe we need virtualization or batching? 
         // For now, render all (limit if needed)
         const DISPLAY_LIMIT = 50;
 
         const renderItems = (itemList) => {
-            itemList.forEach(item => {
+            let firstNewCard = null;
+            itemList.forEach((item, index) => {
                 const card = createCard(item, viewId);
                 grid.appendChild(card); // createCard handles click -> play
+                if (index === 0) firstNewCard = card;
             });
+            // Initialize icons for newly added items
+            if (window.lucide) {
+                lucide.createIcons({ root: grid });
+            }
+            return firstNewCard;
         };
 
-        renderItems(items.slice(0, 50));
+        renderItems(filteredItems.slice(0, DISPLAY_LIMIT));
 
-        if (items.length > 50) {
+        if (filteredItems.length > DISPLAY_LIMIT) {
             const moreBtn = document.createElement('div');
             moreBtn.className = 'card focusable';
             moreBtn.style.minHeight = '150px';
             moreBtn.style.display = 'flex';
             moreBtn.style.alignItems = 'center';
             moreBtn.style.justifyContent = 'center';
-            moreBtn.innerHTML = `<span>+${items.length - 50} More</span>`;
+            moreBtn.innerHTML = `<span>+${filteredItems.length - DISPLAY_LIMIT} More</span>`;
             moreBtn.tabIndex = 0;
-            moreBtn.addEventListener('click', () => {
+            moreBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 moreBtn.remove();
-                renderItems(items.slice(50));
+                const firstCard = renderItems(filteredItems.slice(DISPLAY_LIMIT));
+                if (firstCard && typeof nav !== 'undefined') {
+                    // Slight delay to ensure DOM is ready and browser focus state has cleared
+                    setTimeout(() => {
+                        nav.setFocus(firstCard);
+                    }, 10);
+                }
             });
             grid.appendChild(moreBtn);
         }
@@ -955,10 +1103,12 @@ async function handleNestedMediaClick(item, type, cardElement) {
         try {
             if (type === 'movies') {
                 const info = await client.getVodInfo(item.id);
+                console.log('Fetched Movie Details:', info);
                 extraInfo = info.movie_data || {};
                 extraInfo.info = info.info || {};
             } else if (type === 'series') {
                 const info = await client.getSeriesInfo(item.id);
+                console.log('Fetched Series Details:', info);
                 extraInfo = info.info || {};
                 episodes = info.episodes || {};
             }
@@ -981,31 +1131,16 @@ async function handleNestedMediaClick(item, type, cardElement) {
     const plot = extraInfo.plot || extraInfo.description || 'No description available for this content.';
 
     // HTML Structure
+    const favoriteType = type; // movies or series
     const isSeries = type === 'series';
     const colClass = isSeries ? 'detail-column series-mode' : 'detail-column';
-
-    let episodesHtml = '';
-    if (isSeries) {
-        episodesHtml = `
-            <div class="episodes-column">
-                <div class="season-selector-container">
-                    <select id="season-select" class="season-selector focusable">
-                        <option value="" disabled selected>Select Season</option>
-                    </select>
-                </div>
-                <div id="episodes-list" class="episodes-list">
-                    <!-- Episodes injected here -->
-                </div>
-            </div>
-        `;
-    }
+    const rowClass = isSeries ? 'detail-content-row series-mode-row' : 'detail-content-row';
 
     panel.innerHTML = `
         <div class="split-detail-view">
-             <button class="back-to-grid-btn focusable"><i data-lucide="arrow-left"></i> Back to List</button>
-             
-             <div class="detail-content-row">
+             <div class="${rowClass}">
                  <div class="${colClass}">
+                     <button class="back-to-grid-btn focusable"><i data-lucide="arrow-left"></i> Back to List</button>
                      <div class="poster-large">
                          <img src="${posterUrl}" onerror="this.style.display='none'">
                      </div>
@@ -1019,41 +1154,82 @@ async function handleNestedMediaClick(item, type, cardElement) {
                      
                      <div class="detail-actions">
                          ${!isSeries ? `<button class="btn btn-primary play-now-btn focusable"><i data-lucide="play"></i> Play Now</button>` : ''}
-                         <button class="btn btn-glass focusable"><i data-lucide="star"></i> Favorite</button>
+                         <button id="detail-fav-btn" class="btn btn-glass focusable"><i data-lucide="star"></i> Favorite</button>
                      </div>
                  </div>
                  
-                 ${episodesHtml}
-                 
+                 ${isSeries ? `
+                 <div class="main-player-section">
+                     <div class="player-column">
+                        <div id="nested-player-container">
+                             <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; color:gray; background:#000;">
+                                 <div style="text-align:center;">
+                                     <i data-lucide="play-circle" style="width:50px; height:50px; opacity:0.5; margin-bottom:10px;"></i>
+                                     <div>Select an episode to play</div>
+                                 </div>
+                             </div>
+                        </div>
+                        <div id="track-info-container" class="track-info-panel" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 13px; color: #ccc; display: none;"></div>
+                     </div>
+                     <div class="episodes-section">
+                         <div id="season-tabs" class="season-tabs"></div>
+                         <div id="episodes-list" class="episodes-list-vertical"></div>
+                     </div>
+                 </div>
+                 ` : `
                  <div class="player-column">
                     <div id="nested-player-container">
                          <div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; color:gray; background:#000;">
                              <div style="text-align:center;">
                                  <i data-lucide="play-circle" style="width:50px; height:50px; opacity:0.5; margin-bottom:10px;"></i>
-                                 <div>${isSeries ? 'Select an episode to play' : "Click 'Play Now' to start"}</div>
+                                 <div>Click 'Play Now' to start</div>
                              </div>
                          </div>
                     </div>
                     <div id="track-info-container" class="track-info-panel" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 13px; color: #ccc; display: none;"></div>
-
                  </div>
+                 `}
              </div>
         </div>
     `;
     lucide.createIcons({ root: panel });
 
-    // Handlers
     panel.querySelector('.back-to-grid-btn').addEventListener('click', () => {
         panel.remove();
         if (existingGrid) existingGrid.style.display = '';
+
+        if (cardElement && typeof nav !== 'undefined') {
+            setTimeout(() => {
+                nav.setFocus(cardElement);
+            }, 50);
+        }
     });
 
+    // Favorite Button Handler
+    const favBtn = panel.querySelector('.detail-actions .btn-glass');
+    if (favBtn) {
+        const isFav = isItemFavorite(item, favoriteType);
+        if (isFav) {
+            favBtn.classList.add('active');
+            favBtn.innerHTML = '<i data-lucide="star" style="fill: currentColor;"></i> Favorited';
+        }
+
+        favBtn.addEventListener('click', () => {
+            toggleFavorite(item, favoriteType, favBtn);
+            const nowFav = isItemFavorite(item, favoriteType);
+            favBtn.innerHTML = nowFav
+                ? '<i data-lucide="star" style="fill: currentColor;"></i> Favorited'
+                : '<i data-lucide="star"></i> Favorite';
+            lucide.createIcons({ root: favBtn });
+        });
+    }
+
     // Player Init Function
-    const playContent = (streamUrl, containerId = '#nested-player-container') => {
-        const container = panel.querySelector(containerId);
+    const playContent = (streamUrl, epTitle, epContainerId = '#nested-player-container') => {
+        const container = panel.querySelector(epContainerId);
 
         container.innerHTML = '';
-        const playItem = { url: streamUrl, title: item.title };
+        const playItem = { url: streamUrl, title: `${item.title} - ${epTitle}` };
         const infoContainer = panel.querySelector('#track-info-container');
         if (window.VideoPlayer) {
             VideoPlayer.play(playItem, type, container, infoContainer);
@@ -1063,41 +1239,51 @@ async function handleNestedMediaClick(item, type, cardElement) {
     };
 
     if (isSeries) {
-        // Populate Seasons
-        const seasonSelect = panel.querySelector('#season-select');
+        const seasonTabsContainer = panel.querySelector('#season-tabs');
         const episodesList = panel.querySelector('#episodes-list');
         const seasons = Object.keys(episodes).sort((a, b) => parseInt(a) - parseInt(b));
-
-        seasons.forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s;
-            opt.textContent = `Season ${s}`;
-            seasonSelect.appendChild(opt);
-        });
 
         const renderEpisodes = (seasonNum) => {
             episodesList.innerHTML = '';
             const seasonEps = episodes[seasonNum] || [];
             if (seasonEps.length === 0) {
-                episodesList.innerHTML = '<div style="padding:10px; color:#999;">No episodes found.</div>';
+                episodesList.innerHTML = '<div style="padding:40px; text-align:center; color:#999; font-size:18px;">No episodes found for this season.</div>';
                 return;
             }
 
-            seasonEps.forEach(ep => {
+            seasonEps.forEach((ep, epIdx) => {
                 const el = document.createElement('div');
-                el.className = 'episode-item focusable';
+                el.className = 'episode-card-vertical focusable';
                 el.tabIndex = 0;
+
+                const epInfo = ep.info || {};
+                const thumb = epInfo.movie_image || posterUrl;
+                const plot = epInfo.plot || 'No description available for this episode.';
+                const epDuration = epInfo.duration || '';
+
                 el.innerHTML = `
-                    <div class="episode-title">${ep.episode_num}. ${ep.title}</div>
-                    <div class="episode-meta">ID: ${ep.id} | ${ep.container_extension}</div>
+                    <div class="episode-thumbnail">
+                        <img src="${thumb}" onerror="this.src='${posterUrl}'">
+                        <div class="tv-static"></div>
+                    </div>
+                    <div class="episode-info-main">
+                        <div class="ep-number-title">
+                            <span class="ep-num-badge">EP ${ep.episode_num}</span>
+                            <span class="ep-title-text">${ep.title}</span>
+                        </div>
+                        <p class="ep-plot-preview">${plot}</p>
+                        <div class="ep-meta-footer">
+                            <span>ID: ${ep.id}</span>
+                            <span>${ep.container_extension.toUpperCase()}</span>
+                            ${epDuration ? `<span><i data-lucide="clock" style="width:12px; height:12px; vertical-align:middle; margin-right:4px;"></i>${epDuration}</span>` : ''}
+                        </div>
+                    </div>
                 `;
+
                 el.addEventListener('click', () => {
-                    // Highlight
-                    episodesList.querySelectorAll('.episode-item').forEach(x => x.classList.remove('active'));
+                    episodesList.querySelectorAll('.episode-card-vertical').forEach(x => x.classList.remove('active'));
                     el.classList.add('active');
 
-                    // Build URL
-                    // /series/username/password/id.ext
                     let url = '';
                     if (resource && resource.credentials) {
                         const { host, username, password } = resource.credentials;
@@ -1107,33 +1293,78 @@ async function handleNestedMediaClick(item, type, cardElement) {
                         return;
                     }
 
-                    playContent(url);
+                    playContent(url, ep.title);
                 });
-                // Add keydown Enter
+
                 el.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') el.click();
+                    const key = e.key || e.keyCode;
+                    if (key === 'Enter' || key === 13) {
+                        el.click();
+                    }
                 });
                 episodesList.appendChild(el);
             });
+
+            lucide.createIcons({ root: episodesList });
         };
 
+        seasons.forEach((s, idx) => {
+            const tab = document.createElement('div');
+            tab.className = `season-tab focusable ${idx === 0 ? 'active' : ''}`;
+            tab.tabIndex = 0;
+            tab.textContent = `Season ${s}`;
+
+            tab.addEventListener('click', () => {
+                seasonTabsContainer.querySelectorAll('.season-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                renderEpisodes(s);
+            });
+
+            tab.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') tab.click();
+            });
+
+            seasonTabsContainer.appendChild(tab);
+        });
+
         if (seasons.length > 0) {
-            seasonSelect.value = seasons[0];
             renderEpisodes(seasons[0]);
         }
-
-        seasonSelect.addEventListener('change', (e) => {
-            renderEpisodes(e.target.value);
-        });
 
     } else {
         var playBtn = panel.querySelector('.play-now-btn');
         if (playBtn) {
             playBtn.addEventListener('click', () => {
-                playContent(item.url);
+                if (item.url) {
+                    playContent(item.url, item.title);
+                } else {
+                    console.error("No stream URL for movie");
+                }
             });
         }
     }
+
+    // Set focus to primary action button when panel appears
+    const setInitialFocus = () => {
+        let primaryBtn = null;
+        if (isSeries) {
+            // Focus first episode if available
+            primaryBtn = panel.querySelector('.episode-card-vertical');
+        }
+
+        if (!primaryBtn) {
+            primaryBtn = panel.querySelector('.play-now-btn') || panel.querySelector('.season-tab');
+        }
+
+        if (primaryBtn && typeof nav !== 'undefined') {
+            console.log("Setting initial focus to:", primaryBtn.className);
+            nav.setFocus(primaryBtn);
+        }
+    };
+
+    // Use a slightly longer timeout and multiple attempts if needed for TV performance
+    setTimeout(setInitialFocus, 250);
+    setTimeout(setInitialFocus, 500); // Backup focus attempt
 }
 
 async function loadCatchupEpg(item, contentArea) {
@@ -1242,6 +1473,8 @@ async function loadCatchupEpg(item, contentArea) {
                 if (desc && /^[A-Za-z0-9+/=]+$/.test(desc.trim())) {
                     desc = atob(desc);
                 }
+                // Fix encoding (UTF-8 bytes interpreted as Latin-1)
+                try { desc = decodeURIComponent(escape(desc)); } catch (e) { }
             } catch (e) { }
             progEl.querySelector('.c-desc').textContent = desc;
 
@@ -1251,6 +1484,8 @@ async function loadCatchupEpg(item, contentArea) {
                 if (title && /^[A-Za-z0-9+/=]+$/.test(title.trim())) {
                     title = atob(title.trim());
                 }
+                // Fix encoding (UTF-8 bytes interpreted as Latin-1)
+                try { title = decodeURIComponent(escape(title)); } catch (e) { }
             } catch (e) { }
             progEl.querySelector('.c-title').textContent = title;
 
@@ -1261,24 +1496,13 @@ async function loadCatchupEpg(item, contentArea) {
                 const durationMinutes = Math.floor(durationSeconds / 60);
 
                 // Start Format: YYYY-MM-DD:HH-MM
-                let startFormatted;
-                if (prog.start) {
-                    const parts = prog.start.split(' ');
-                    if (parts.length >= 2) {
-                        const datePart = parts[0];
-                        const timePart = parts[1].substring(0, 5).replace(':', '-');
-                        startFormatted = `${datePart}:${timePart}`;
-                    }
-                }
-
-                if (!startFormatted) {
-                    const y = date.getFullYear();
-                    const m = String(date.getMonth() + 1).padStart(2, '0');
-                    const d = String(date.getDate()).padStart(2, '0');
-                    const H = String(date.getHours()).padStart(2, '0');
-                    const M = String(date.getMinutes()).padStart(2, '0');
-                    startFormatted = `${y}-${m}-${d}:${H}-${M}`;
-                }
+                // Always use timestamp for consistent formatting
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                const H = String(date.getHours()).padStart(2, '0');
+                const M = String(date.getMinutes()).padStart(2, '0');
+                const startFormatted = `${y}-${m}-${d}:${H}-${M}`;
 
 
 
@@ -1376,6 +1600,22 @@ function createCard(item, type) {
     // Overlay with Title + Status
     const overlay = document.createElement('div');
     overlay.className = 'card-overlay';
+
+    // Add Badges if present
+    if (item.badges && item.badges.length) {
+        const badgesDiv = document.createElement('div');
+        badgesDiv.className = 'card-badges';
+        item.badges.forEach(b => {
+            // Skip CATCHUP on cards maybe? Or show it. Let's show it.
+            if (b === 'CATCHUP') return; // Usually card view is Movies/Series or Grid Channels.
+
+            const span = document.createElement('span');
+            span.className = 'badge';
+            span.textContent = b;
+            badgesDiv.appendChild(span);
+        });
+        if (badgesDiv.hasChildNodes()) overlay.appendChild(badgesDiv);
+    }
 
     const titleDiv = document.createElement('div');
     titleDiv.className = 'card-title';
@@ -1929,19 +2169,52 @@ async function updateResource(id, name, url, options = {}) {
 
 // --- Search ---
 
+/**
+ * Improved search matching algorithm.
+ * 1. Matches exact substring (case-insensitive).
+ * 2. Matches if all words/keywords in query are present in any order (case-insensitive).
+ */
+function matchSearchQuery(text, query) {
+    if (!text || !query) return false;
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase().trim();
+
+    // Exact match (including spaces)
+    if (lowerText.includes(lowerQuery)) return true;
+
+    // Word match (all words must be present in any order)
+    const queryWords = lowerQuery.split(/\s+/).filter(word => word.length > 0);
+    if (queryWords.length === 0) return false;
+
+    return queryWords.every(word => lowerText.includes(word));
+}
+
 function setupSearch() {
-    const input = document.getElementById('global-search-input');
+    // Setup global search (in Search view)
+    const globalInput = document.getElementById('global-search-input');
     const resultsContainer = document.getElementById('search-results');
 
-    let debounceTimer;
-    input.addEventListener('input', (e) => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            performSearch(e.target.value);
-        }, 500);
-    });
+    if (globalInput && resultsContainer) {
+        let debounceTimer;
+        globalInput.addEventListener('input', (e) => {
+            syncResetButton(globalInput);
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                performGlobalSearch(e.target.value);
+            }, 500);
+        });
 
-    function performSearch(query) {
+        const globalResetBtn = document.querySelector('[data-target="global-search-input"]');
+        if (globalResetBtn) {
+            globalResetBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleResetClick(globalResetBtn);
+            });
+        }
+    }
+
+    function performGlobalSearch(query) {
         state.searchQuery = query.toLowerCase();
         resultsContainer.innerHTML = '';
 
@@ -1953,7 +2226,7 @@ function setupSearch() {
             const catData = state.aggregatedData[cat];
             Object.values(catData).forEach(list => {
                 list.forEach(item => {
-                    if (item.title.toLowerCase().includes(state.searchQuery)) {
+                    if (matchSearchQuery(item.title, state.searchQuery)) {
                         matches.push({ ...item, type: cat });
                     }
                 });
@@ -1980,6 +2253,356 @@ function setupSearch() {
         });
 
         resultsContainer.appendChild(grid);
+    }
+
+}
+
+// Setup category search handlers - called after content views are rendered
+function setupCategorySearchHandlers() {
+    setupCategorySearchHandler('live');
+    setupCategorySearchHandler('movies');
+    setupCategorySearchHandler('series');
+    setupCategorySearchHandler('catchup');
+}
+
+function setupCategorySearchHandler(viewId) {
+    const input = document.getElementById(`${viewId}-search-input`);
+    if (!input) return;
+
+    // Prevent duplicate listeners on re-render
+    if (input.dataset.searchSetup === 'true') return;
+    input.dataset.searchSetup = 'true';
+
+    let debounceTimer;
+    input.addEventListener('input', (e) => {
+        syncResetButton(input);
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            filterCategories(viewId, e.target.value);
+        }, 300);
+    });
+
+    const resetBtn = document.querySelector(`[data-target="${viewId}-search-input"]`);
+    if (resetBtn) {
+        resetBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleResetClick(resetBtn);
+        });
+    }
+
+    // Clear search when pressing Escape
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            input.value = '';
+            syncResetButton(input);
+            filterCategories(viewId, '');
+        }
+    });
+}
+
+/**
+ * Sync the visibility of the search reset button based on input content.
+ */
+function syncResetButton(inputEl) {
+    const container = inputEl.closest('.header-search-wrapper') || inputEl.closest('.search-bar-container');
+    if (!container) return;
+    const resetBtn = container.querySelector('.search-reset-btn');
+    if (!resetBtn) return;
+
+    if (inputEl.value.trim().length > 0) {
+        resetBtn.style.display = 'flex';
+    } else {
+        resetBtn.style.display = 'none';
+        // If the reset button was focused but is now being hidden, move focus back to input
+        if (typeof nav !== 'undefined' && nav.currentFocus === resetBtn) {
+            nav.setFocus(inputEl);
+        }
+    }
+}
+
+/**
+ * Handle clicking the search reset button.
+ */
+function handleResetClick(btn) {
+    const inputId = btn.dataset.target;
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    input.value = '';
+    syncResetButton(input);
+
+    // Trigger input event to refresh filtered lists
+    input.dispatchEvent(new Event('input'));
+
+    // Focus navigation to search bar as requested
+    if (typeof nav !== 'undefined') {
+        nav.setFocus(input);
+    }
+}
+
+function filterCategories(viewId, query) {
+    state.categorySearchQuery[viewId] = query.toLowerCase().trim();
+    const searchQuery = state.categorySearchQuery[viewId];
+
+    const categoriesPanel = document.getElementById(`categories-panel-${viewId}`);
+    if (!categoriesPanel) return;
+
+    const catList = categoriesPanel.querySelector('.nested-list');
+    if (!catList) return;
+
+    const nestedContainer = categoriesPanel.closest('.nested-view-container');
+    const itemsSidebar = nestedContainer ? nestedContainer.querySelector('.items-sidebar') : null;
+    const contentArea = nestedContainer ? nestedContainer.querySelector('.nested-content-area') : null;
+
+    // Get the appropriate data source based on viewId
+    let dataGroups;
+    if (viewId === 'live') {
+        dataGroups = state.aggregatedData.channels;
+    } else if (viewId === 'movies') {
+        dataGroups = state.aggregatedData.movies;
+    } else if (viewId === 'series') {
+        dataGroups = state.aggregatedData.series;
+    } else if (viewId === 'catchup') {
+        dataGroups = state.aggregatedData.catchup;
+    } else {
+        return;
+    }
+
+    let allResultsItem = catList.querySelector('.all-results-item');
+    const categoryItems = catList.querySelectorAll('.nested-list-item:not(.all-results-item)');
+    let visibleCategoryCount = 0;
+    let totalMatchedItems = 0;
+    let firstVisibleItem = null;
+    const allMatches = []; // To store ALL matched items for the "All Results" category
+
+    // Only start search processing from 2 characters
+    const effectiveSearchQuery = searchQuery.length >= 2 ? searchQuery : '';
+
+    categoryItems.forEach(item => {
+        const categoryName = item.dataset.category || '';
+        const categoryData = dataGroups[categoryName] || [];
+
+        if (!effectiveSearchQuery) {
+            // No search (or too short) - show all categories with original counts
+            item.style.display = '';
+            const countBadge = item.querySelector('.count-badge');
+            if (countBadge) {
+                countBadge.textContent = categoryData.length;
+            }
+            visibleCategoryCount++;
+            if (!firstVisibleItem) firstVisibleItem = item;
+        } else {
+            // Search through items in this category
+            const matchingItems = categoryData.filter(channel =>
+                matchSearchQuery(channel.title, effectiveSearchQuery)
+            );
+
+            if (matchingItems.length > 0) {
+                // Category has matching items - show it with filtered count
+                item.style.display = '';
+                const countBadge = item.querySelector('.count-badge');
+                if (countBadge) {
+                    countBadge.textContent = `${matchingItems.length}/${categoryData.length}`;
+                }
+                visibleCategoryCount++;
+                totalMatchedItems += matchingItems.length;
+                allMatches.push(...matchingItems);
+                if (!firstVisibleItem) firstVisibleItem = item;
+            } else {
+                // No matching items - hide category
+                item.style.display = 'none';
+            }
+        }
+    });
+
+    // Handle "All Results" entry
+    if (effectiveSearchQuery) {
+        // Deduplicate matches by URL
+        const uniqueAllMatches = Array.from(new Map(allMatches.map(item => [item.url, item])).values());
+
+        let newlyCreated = false;
+        if (!allResultsItem) {
+            allResultsItem = document.createElement('div');
+            allResultsItem.className = 'nested-list-item focusable all-results-item';
+            allResultsItem.tabIndex = 0;
+            allResultsItem.dataset.category = 'ALL_RESULTS';
+            allResultsItem.innerHTML = `
+                <div style="display:flex; align-items:center;">
+                    <i data-lucide="search" style="width:18px; height:18px; margin-right:8px; color: #3b82f6;"></i>
+                    <span class="category-name" style="color: #3b82f6; font-weight: 500;">All Results</span>
+                </div>
+                <span class="count-badge">${uniqueAllMatches.length}</span>
+            `;
+            catList.prepend(allResultsItem);
+            lucide.createIcons({ root: allResultsItem });
+
+            allResultsItem.addEventListener('click', () => {
+                catList.querySelectorAll('.nested-list-item').forEach(b => b.classList.remove('active'));
+                allResultsItem.classList.add('active');
+
+                // Recalculate latest matches based on current query to ensure we have the most up-to-date list
+                const currentQuery = state.categorySearchQuery[viewId];
+                const latestMatches = [];
+                Object.values(dataGroups).forEach(groupData => {
+                    groupData.forEach(item => {
+                        if (matchSearchQuery(item.title, currentQuery)) {
+                            latestMatches.push(item);
+                        }
+                    });
+                });
+                const uniqueLatestMatches = Array.from(new Map(latestMatches.map(item => [item.url, item])).values());
+                handleNestedCategoryClick(viewId, 'All Results', uniqueLatestMatches, itemsSidebar, contentArea);
+            });
+
+            allResultsItem.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') allResultsItem.click();
+            });
+            newlyCreated = true;
+        } else {
+            const countBadge = allResultsItem.querySelector('.count-badge');
+            if (countBadge) countBadge.textContent = uniqueAllMatches.length;
+        }
+        allResultsItem.style.display = '';
+
+        // Auto-activate when user starts typing (if not already active)
+        if (newlyCreated || !catList.querySelector('.nested-list-item.active')) {
+            catList.querySelectorAll('.nested-list-item').forEach(b => b.classList.remove('active'));
+            allResultsItem.classList.add('active');
+            handleNestedCategoryClick(viewId, 'All Results', uniqueAllMatches, itemsSidebar, contentArea);
+        }
+
+        if (!firstVisibleItem || allResultsItem.classList.contains('active')) {
+            firstVisibleItem = allResultsItem;
+        }
+    } else if (allResultsItem) {
+        // If search cleared and all-results was active, switch back to first category
+        if (allResultsItem.classList.contains('active')) {
+            allResultsItem.classList.remove('active');
+            if (firstVisibleItem) {
+                catList.querySelectorAll('.nested-list-item').forEach(b => b.classList.remove('active'));
+                firstVisibleItem.classList.add('active');
+                const group = firstVisibleItem.dataset.category;
+                handleNestedCategoryClick(viewId, group, dataGroups[group], itemsSidebar, contentArea);
+            }
+        }
+        allResultsItem.style.display = 'none';
+        allResultsItem.remove(); // Remove it completely when not searching
+    }
+
+    // Update header with filtered count
+    const header = categoriesPanel.querySelector('.nested-header');
+    if (header) {
+        const totalCategories = categoryItems.length;
+        if (effectiveSearchQuery && visibleCategoryCount < totalCategories) {
+            header.textContent = `Categories (${visibleCategoryCount}/${totalCategories})`;
+        } else {
+            header.textContent = 'Categories';
+        }
+    }
+
+    // Scroll first visible category into view
+    if (firstVisibleItem && effectiveSearchQuery) {
+        firstVisibleItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    // Real-time update of channels/items panel if a category is active
+    updateActiveChannelPanel(viewId, dataGroups, effectiveSearchQuery);
+}
+
+// Update the channel/items panel in real-time based on search
+function updateActiveChannelPanel(viewId, dataGroups, searchQuery) {
+    // Find if there's an active category
+    const categoriesPanel = document.getElementById(`categories-panel-${viewId}`);
+    if (!categoriesPanel) return;
+
+    const activeCategory = categoriesPanel.querySelector('.nested-list-item.active');
+    if (!activeCategory) return;
+
+    const categoryName = activeCategory.dataset.category || '';
+    let categoryData;
+
+    if (categoryName === 'ALL_RESULTS') {
+        // Special case: combine all matching results from all categories for real-time filtering
+        const allMatches = [];
+        Object.values(dataGroups).forEach(groupData => {
+            groupData.forEach(item => {
+                if (matchSearchQuery(item.title, searchQuery)) {
+                    allMatches.push(item);
+                }
+            });
+        });
+        // Deduplicate by URL
+        categoryData = Array.from(new Map(allMatches.map(item => [item.url, item])).values());
+    } else {
+        categoryData = dataGroups[categoryName] || [];
+    }
+
+    if (viewId === 'live' || viewId === 'catchup') {
+        // Update channels sidebar
+        const itemsPanel = document.getElementById(`items-panel-${viewId}`);
+        if (!itemsPanel) return;
+
+        const listContainer = itemsPanel.querySelector('.nested-list');
+        if (!listContainer) return;
+
+        // Filter items
+        let filteredItems = categoryData;
+        if (searchQuery && categoryName !== 'ALL_RESULTS') { // categoryData for ALL_RESULTS is already filtered
+            filteredItems = categoryData.filter(item =>
+                matchSearchQuery(item.title, searchQuery)
+            );
+        }
+
+        // Update header
+        const channelHeader = itemsPanel.querySelector('.nested-header');
+        if (channelHeader) {
+            if (searchQuery && filteredItems.length < categoryData.length) {
+                channelHeader.textContent = `Channels (${filteredItems.length}/${categoryData.length})`;
+            } else {
+                channelHeader.textContent = 'Channels';
+            }
+        }
+
+        // Update channel list items visibility
+        const channelItems = listContainer.querySelectorAll('.nested-list-item');
+        channelItems.forEach(item => {
+            const channelUrl = item.dataset.url || '';
+            // Find if item should be visible
+            let titleMatch = true;
+            if (categoryName === 'ALL_RESULTS') {
+                // For ALL_RESULTS, the list might be long, but we only show what's currently in the listContainer
+                // Wait, if we are in ALL_RESULTS, handleNestedCategoryClick has already rendered them.
+                // We just need to hide those that no longer match the refined search.
+                const titleEl = item.querySelector('.channel-list-title');
+                const title = titleEl ? titleEl.textContent : '';
+                titleMatch = !searchQuery || matchSearchQuery(title, searchQuery);
+            } else {
+                const channel = categoryData.find(ch => ch.url === channelUrl);
+                if (channel) {
+                    titleMatch = !searchQuery || matchSearchQuery(channel.title, searchQuery);
+                }
+            }
+            item.style.display = titleMatch ? '' : 'none';
+        });
+    } else {
+        // For movies/series - update the grid
+        const contentArea = document.querySelector(`#${viewId}-rows .nested-content-area`);
+        if (!contentArea) return;
+
+        const grid = contentArea.querySelector('.nested-media-grid');
+        if (!grid) return;
+
+        // Update card visibility
+        const cards = grid.querySelectorAll('.card');
+        cards.forEach(card => {
+            const title = card.querySelector('.card-title');
+            if (title) {
+                const titleText = title.textContent || '';
+                const titleMatch = !searchQuery || matchSearchQuery(titleText, searchQuery);
+                card.style.display = titleMatch ? '' : 'none';
+            }
+        });
     }
 }
 

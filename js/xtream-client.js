@@ -91,6 +91,10 @@ class XtreamClient {
             fetchCat('get_series_categories')
         ]);
 
+        console.log('Fetched Categories (Live):', liveCats);
+        console.log('Fetched Categories (VOD):', vodCats);
+        console.log('Fetched Categories (Series):', serCats);
+
         const liveCatMap = this.mapCategories(liveCats);
         const vodCatMap = this.mapCategories(vodCats);
         const serCatMap = this.mapCategories(serCats);
@@ -101,13 +105,17 @@ class XtreamClient {
         // 1. Live
         try {
             const liveStreams = await this.fetchJson('get_live_streams', {}, signal);
+            console.log('Fetched Live Streams:', liveStreams);
             if (Array.isArray(liveStreams)) {
                 liveStreams.forEach(stream => {
                     const catName = liveCatMap[stream.category_id] || 'Uncategorized';
                     if (!data.channels[catName]) data.channels[catName] = [];
 
+                    const processed = NameProcessor.process(stream.name);
                     const channelItem = {
-                        title: stream.name,
+                        title: processed.title,
+                        rawTitle: stream.name, // Keep original just in case
+                        badges: processed.badges || [],
                         logo: stream.stream_icon,
                         group: catName,
                         url: `${this.baseUrl}/live/${this.username}/${this.password}/${stream.stream_id}.ts`,
@@ -122,6 +130,7 @@ class XtreamClient {
 
                     // Catchup Logic
                     if (stream.tv_archive == 1) {
+                        if (!channelItem.badges.includes('CATCHUP')) channelItem.badges.push('CATCHUP');
                         if (!data.catchup[catName]) data.catchup[catName] = [];
                         data.catchup[catName].push(channelItem);
                         stats.catchup++;
@@ -136,19 +145,24 @@ class XtreamClient {
         // 2. VOD
         try {
             const vodStreams = await this.fetchJson('get_vod_streams', {}, signal);
+            console.log('Fetched VOD Streams:', vodStreams);
             if (Array.isArray(vodStreams)) {
                 vodStreams.forEach(stream => {
                     const catName = vodCatMap[stream.category_id] || 'Uncategorized';
                     if (!data.movies[catName]) data.movies[catName] = [];
 
                     const ext = stream.container_extension || 'mp4';
+                    const processed = NameProcessor.process(stream.name);
                     data.movies[catName].push({
-                        title: stream.name,
+                        title: processed.title,
+                        rawTitle: stream.name,
+                        badges: processed.badges,
                         logo: stream.stream_icon,
                         group: catName,
                         url: `${this.baseUrl}/movie/${this.username}/${this.password}/${stream.stream_id}.${ext}`,
                         id: stream.stream_id,
-                        rating: stream.rating
+                        rating: stream.rating,
+                        releaseDate: stream.releaseDate || stream.release_date || null
                     });
                     stats.movies++;
                 });
@@ -161,18 +175,23 @@ class XtreamClient {
         // 3. Series
         try {
             const seriesList = await this.fetchJson('get_series', {}, signal);
+            console.log('Fetched Series:', seriesList);
             if (Array.isArray(seriesList)) {
                 seriesList.forEach(series => {
                     const catName = serCatMap[series.category_id] || 'Uncategorized';
                     if (!data.series[catName]) data.series[catName] = [];
 
+                    const processed = NameProcessor.process(series.name);
                     data.series[catName].push({
-                        title: series.name,
+                        title: processed.title,
+                        rawTitle: series.name,
+                        badges: processed.badges,
                         logo: series.cover,
                         group: catName,
                         id: series.series_id,
                         isSeries: true, // Marker for UI to handle click differently
-                        rating: series.rating
+                        rating: series.rating,
+                        releaseDate: series.releaseDate || series.release_date || series.last_modified || null
                         // No direct URL for series
                     });
                     stats.series++;
@@ -204,7 +223,7 @@ class XtreamClient {
         const map = {};
         if (Array.isArray(cats)) {
             cats.forEach(c => {
-                map[c.category_id] = c.category_name;
+                map[c.category_id] = NameProcessor.processCategory(c.category_name);
             });
         }
         return map;

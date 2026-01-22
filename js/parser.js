@@ -218,16 +218,33 @@ class PlaylistParser {
 
         if (!info.group) info.group = "Uncategorized";
 
+        // Clean name immediately
+        if (typeof NameProcessor !== 'undefined') {
+            const originalTitle = info.title;
+            const processed = NameProcessor.process(originalTitle);
+            info.title = processed.title;
+            info.badges = processed.badges;
+            info.rawTitle = originalTitle;
+        }
+
         return info;
     }
 
-    categorizeItem(item, batchList) { // turbo
+    categorizeItem(item, batchList) {
         const url = (item.url || '').toLowerCase();
+        const group = (item.group || '').toLowerCase();
         let mainCategory = 'channels';
 
+        // 1. Check URL patterns (common for Xtream-based M3U)
         if (url.includes('/movie/') || url.includes('/movies/')) {
             mainCategory = 'movies';
         } else if (url.includes('/series/')) {
+            mainCategory = 'series';
+        }
+        // 2. Check Group title patterns (fallback for generic M3U)
+        else if (group.includes('movie') || group.includes('vod') || group.includes('cinema') || group.includes('film')) {
+            mainCategory = 'movies';
+        } else if (group.includes('series') || group.includes('tv show') || group.includes('saison') || group.includes('season')) {
             mainCategory = 'series';
         }
 

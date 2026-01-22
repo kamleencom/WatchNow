@@ -1,6 +1,6 @@
 {
   "name": "ok-player",
-  "version": "0.0.35",
+  "version": "0.0.37",
   "description": "Local scripts to fix webos cli",
   "dependencies": {
     "@enact/webos": "^5.4.1",

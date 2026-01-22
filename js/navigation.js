@@ -22,7 +22,7 @@ class SpatialNavigation {
         // Update focus on click to sync state (without scrolling)
         document.addEventListener('click', (e) => {
             const target = e.target.closest(this.focusableSelector);
-            if (target && target !== this.currentFocus) {
+            if (target && target !== this.currentFocus && this.isVisible(target)) {
                 this.setFocus(target, false);
             }
         });
@@ -36,14 +36,17 @@ class SpatialNavigation {
             return;
         }
 
-        if (!this.currentFocus) {
+        if (!this.currentFocus || !document.contains(this.currentFocus)) {
             this.focusFirst();
             return;
         }
 
         const navKeyCodes = [37, 38, 39, 40, 13, 415, 19, 461]; // Arrow keys, Enter, Play, Pause, Back
         if (navKeyCodes.includes(e.keyCode)) {
-            // e.preventDefault(); // Prevent default scrolling sometimes
+            // Prevent default scrolling for arrows to stop browser interference
+            if ([37, 38, 39, 40].includes(e.keyCode)) {
+                e.preventDefault();
+            }
         }
 
         switch (e.keyCode) {
@@ -62,6 +65,7 @@ class SpatialNavigation {
             case 13: // Enter/OK
                 this.triggerAction();
                 break;
+            case 403: // Red button (WebOS)
             case 461: // Back (WebOS)
             case 8:   // Backspace (Browser debug)
                 // Handle back action if needed in app logic
@@ -87,9 +91,19 @@ class SpatialNavigation {
 
         if (this.currentFocus) {
             this.currentFocus.classList.remove(this.activeClass);
+            // If moving away from an input, blur it
+            if (this.currentFocus.tagName === 'INPUT') {
+                this.currentFocus.blur();
+            }
         }
+
         this.currentFocus = element;
         this.currentFocus.classList.add(this.activeClass);
+
+        // If moving to an input, focus it browser-side
+        if (this.currentFocus.tagName === 'INPUT') {
+            this.currentFocus.focus();
+        }
 
         if (scroll) {
             this.currentFocus.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -109,6 +123,24 @@ class SpatialNavigation {
         }
     }
 
+    focusSearchBar() {
+        // Get current active view
+        const activeSection = this.getActiveSection();
+        if (!activeSection) return;
+
+        const viewId = activeSection.id; // 'live', 'movies', 'series', 'catchup'
+
+        // Map view IDs that have search bars
+        const searchableViews = ['live', 'movies', 'series', 'catchup'];
+        if (!searchableViews.includes(viewId)) return;
+
+        // Find the search input for this view
+        const searchInput = document.getElementById(`${viewId}-search-input`);
+        if (searchInput) {
+            this.setFocus(searchInput, false);
+        }
+    }
+
     moveFocus(direction) {
         if (!this.currentFocus) return;
 
@@ -122,44 +154,104 @@ class SpatialNavigation {
             const inNestedGrid = this.currentFocus.closest('.nested-content-area');
 
             if (inNestedGrid) {
-                // 1. Try to find candidate STRICTLY WITHIN the grid first
-                // This prevents jumping to global elements (sidebar) on Down/Up/Right
-                const foundInGrid = this.moveFocusGeometric(direction, inNestedGrid);
-                if (foundInGrid) return;
-
-                // 2. If no candidate in grid (we are at edge), handle escape logic
-
-                // Only allow escaping to the LEFT
-                if (direction === 'left') {
-                    const activeSection = this.getActiveSection();
-                    if (activeSection) {
-                        // Check for Items Sidebar first (it's closer to content, e.g. for Live TV)
-                        let targetSidebar = activeSection.querySelector('.items-sidebar.visible');
-
-                        // If no items sidebar or not visible, try Categories Sidebar
-                        if (!targetSidebar || !this.isVisible(targetSidebar)) {
-                            targetSidebar = activeSection.querySelector('.categories-sidebar');
+                // Special case for Movie/Series Detail Panel: handle Left to Column logic
+                const inDetail = this.currentFocus.closest('.movie-detail-panel');
+                if (inDetail && direction === 'left' && !this.currentFocus.closest('.detail-column')) {
+                    // 1. Episode -> Favorite Button
+                    if (this.currentFocus.classList.contains('episode-card-vertical')) {
+                        const favBtn = inDetail.querySelector('#detail-fav-btn');
+                        if (favBtn && this.isVisible(favBtn)) {
+                            this.setFocus(favBtn);
+                            return;
                         }
+                    }
 
-                        if (targetSidebar && this.isVisible(targetSidebar)) {
-                            // Try to find the active item first
-                            let target = targetSidebar.querySelector(this.focusableSelector + '.active');
+                    // 2. Season Tab (First) -> Back to List Button
+                    if (this.currentFocus.classList.contains('season-tab') && !this.currentFocus.previousElementSibling) {
+                        const backBtn = inDetail.querySelector('.back-to-grid-btn');
+                        if (backBtn && this.isVisible(backBtn)) {
+                            this.setFocus(backBtn);
+                            return;
+                        }
+                    }
+                }
 
-                            // If no active item, fallback to first visible
-                            if (!target || target.offsetParent === null) {
-                                target = targetSidebar.querySelector(this.focusableSelector);
-                            }
+                if (inDetail && direction === 'right' && this.currentFocus.closest('.detail-column')) {
+                    // 1. Favorite Button -> First Episode
+                    if (this.currentFocus.id === 'detail-fav-btn' || this.currentFocus.closest('#detail-fav-btn')) {
+                        const firstEp = inDetail.querySelector('.episode-card-vertical');
+                        if (firstEp && this.isVisible(firstEp)) {
+                            this.setFocus(firstEp);
+                            return;
+                        }
+                    }
 
-                            if (target) {
-                                this.setFocus(target);
+                    // 2. Back to List Button -> Active Season Tab
+                    if (this.currentFocus.classList.contains('back-to-grid-btn')) {
+                        const activeTab = inDetail.querySelector('.season-tab.active') || inDetail.querySelector('.season-tab');
+                        if (activeTab && this.isVisible(activeTab)) {
+                            this.setFocus(activeTab);
+                            return;
+                        }
+                    }
+                }
+
+                // Vertical Navigation within Detail Column (Shortcut Favorite <-> Back to List)
+                if (inDetail && this.currentFocus.closest('.detail-column')) {
+                    if (direction === 'up' && (this.currentFocus.id === 'detail-fav-btn' || this.currentFocus.closest('#detail-fav-btn'))) {
+                        const backBtn = inDetail.querySelector('.back-to-grid-btn');
+                        if (backBtn && this.isVisible(backBtn)) {
+                            this.setFocus(backBtn);
+                            return;
+                        }
+                    }
+                    if (direction === 'down' && this.currentFocus.classList.contains('back-to-grid-btn')) {
+                        const favBtn = inDetail.querySelector('#detail-fav-btn');
+                        if (favBtn && this.isVisible(favBtn)) {
+                            this.setFocus(favBtn);
+                            return;
+                        }
+                    }
+                }
+
+                // Special case for Episode List -> Season Tabs (Up)
+                if (inDetail && direction === 'up' && this.currentFocus.classList.contains('episode-card-vertical')) {
+                    const episodesList = inDetail.querySelector('#episodes-list');
+                    if (episodesList) {
+                        const firstEpisode = episodesList.querySelector('.episode-card-vertical');
+                        if (this.currentFocus === firstEpisode) {
+                            const activeTab = inDetail.querySelector('.season-tab.active') || inDetail.querySelector('.season-tab');
+                            if (activeTab && this.isVisible(activeTab)) {
+                                this.setFocus(activeTab);
                                 return;
                             }
                         }
                     }
                 }
 
-                // For Down, Up, Right at the boundary, do NOTHING (stop).
-                // This fixes the issue where Down Arrow jumps to Sidebar.
+                // 1. Try to find candidate STRICTLY WITHIN the grid/panel first
+                const foundInGrid = this.moveFocusGeometric(direction, inNestedGrid);
+                if (foundInGrid) return;
+
+                // 2. If no candidate in grid (we are at edge), handle escape logic
+                // Only allow escaping to the LEFT and NOT from inside a detail panel (unless already in the left column)
+                if (direction === 'left') {
+                    const activeSection = this.getActiveSection();
+                    if (activeSection) {
+                        // Check for Items Sidebar first
+                        let targetSidebar = activeSection.querySelector('.items-sidebar.visible');
+
+                        if (!targetSidebar || !this.isVisible(targetSidebar)) {
+                            targetSidebar = activeSection.querySelector('.categories-sidebar');
+                        }
+
+                        if (targetSidebar && this.isVisible(targetSidebar)) {
+                            this.focusInContainer(targetSidebar);
+                            return;
+                        }
+                    }
+                }
+
                 return;
             }
 
@@ -170,6 +262,14 @@ class SpatialNavigation {
 
         // Strict Sidebar Navigation
         if (direction === 'up' || direction === 'down') {
+            if (region === 'header-search' && direction === 'down') {
+                const activeSection = this.getActiveSection();
+                const categoriesSidebar = activeSection ? activeSection.querySelector('.categories-sidebar') : null;
+                if (categoriesSidebar) {
+                    this.focusInContainer(categoriesSidebar);
+                    return;
+                }
+            }
             this.navigateWithinRegion(direction, region);
         } else if (direction === 'right') {
             this.navigateRight(region);
@@ -181,6 +281,7 @@ class SpatialNavigation {
     getCurrentRegion(el) {
         if (!el) return null;
         if (el.closest('#main-sidebar')) return 'main-sidebar';
+        if (el.closest('.header-search-container') || el.closest('.search-bar-container') || el.closest('.header-search-wrapper')) return 'header-search';
         if (el.closest('.categories-sidebar')) return 'categories-panel';
         if (el.closest('.items-sidebar')) return 'items-panel';
         return 'content';
@@ -206,7 +307,13 @@ class SpatialNavigation {
         if (index === -1) return;
 
         let nextIndex = index;
-        if (direction === 'up') nextIndex = index - 1;
+        if (direction === 'up') {
+            if (index === 0 && (region === 'categories-panel' || region === 'items-panel')) {
+                this.focusSearchBar();
+                return;
+            }
+            nextIndex = index - 1;
+        }
         if (direction === 'down') nextIndex = index + 1;
 
         if (nextIndex >= 0 && nextIndex < focusables.length) {
@@ -217,6 +324,16 @@ class SpatialNavigation {
     navigateRight(region) {
         let targetContainer = null;
         const activeSection = this.getActiveSection();
+
+        if (region === 'header-search') {
+            const container = this.currentFocus.closest('.header-search-wrapper') || this.currentFocus.closest('.search-bar-container');
+            const focusables = Array.from(container.querySelectorAll(this.focusableSelector)).filter(el => this.isVisible(el));
+            const index = focusables.indexOf(this.currentFocus);
+            if (index < focusables.length - 1) {
+                this.setFocus(focusables[index + 1]);
+                return;
+            }
+        }
 
         if (region === 'main-sidebar') {
             // Priority: Categories Panel (in active section) -> Content (in active section)
@@ -249,7 +366,17 @@ class SpatialNavigation {
         let targetContainer = null;
         const activeSection = this.getActiveSection();
 
-        if (region === 'items-panel') {
+        if (region === 'header-search') {
+            const container = this.currentFocus.closest('.header-search-wrapper') || this.currentFocus.closest('.search-bar-container');
+            const focusables = Array.from(container.querySelectorAll(this.focusableSelector)).filter(el => this.isVisible(el));
+            const index = focusables.indexOf(this.currentFocus);
+            if (index > 0) {
+                this.setFocus(focusables[index - 1]);
+                return;
+            }
+            // Left from search goes to sidebar
+            targetContainer = document.getElementById('main-sidebar');
+        } else if (region === 'items-panel') {
             if (activeSection) {
                 targetContainer = activeSection.querySelector('.categories-sidebar');
             }
