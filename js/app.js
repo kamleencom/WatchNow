@@ -22,7 +22,7 @@ const state = {
         series: [],   // Array of favorite series items
         buckets: []   // Array of favorite buckets (folders)
     },
-    currentView: 'live',
+    currentView: 'home',
     searchQuery: '',
     focusedItem: null, // Currently focused item for yellow button
     categorySearchQuery: {
@@ -91,9 +91,218 @@ window.handleChannelLogoError = function (img) {
 
 // --- Initialization ---
 
-document.addEventListener('DOMContentLoaded', () => {
-    initApp();
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Initialize OKP ID (Reuse existing logic/Storage)
+    const okpId = await initializeOkpId();
+
+    // 2. Verify License
+    verifyLicense(okpId);
 });
+
+function getVirtualId() {
+    let vId = localStorage.getItem('watchnow_virtual_device_id');
+    if (!vId) {
+        vId = 'virtual_' + Math.random().toString(36).substr(2) + Date.now();
+        localStorage.setItem('watchnow_virtual_device_id', vId);
+    }
+    return generateDeterministicMac(vId);
+}
+
+async function initializeOkpId() {
+    return new Promise((resolve) => {
+        const stored = localStorage.getItem('watchnow_okp_id');
+        if (stored) {
+            resolve(stored);
+            return;
+        }
+
+        // WebOS Service Call
+        if (window.webOS && window.webOS.service) {
+            webOS.service.request("luna://com.webos.service.sm", {
+                method: "deviceid/getIDs",
+                parameters: { "idType": ["LGUDID"] },
+                onSuccess: function (inResponse) {
+                    if (inResponse.idList && inResponse.idList.length > 0 && inResponse.idList[0].idValue) {
+                        const id = generateDeterministicMac(inResponse.idList[0].idValue);
+                        localStorage.setItem('watchnow_okp_id', id);
+                        resolve(id);
+                    } else {
+                        const id = getVirtualId();
+                        localStorage.setItem('watchnow_okp_id', id);
+                        resolve(id);
+                    }
+                },
+                onFailure: function (inError) {
+                    console.error("Failed to get device ID", inError);
+                    const id = getVirtualId();
+                    localStorage.setItem('watchnow_okp_id', id);
+                    resolve(id);
+                }
+            });
+        } else {
+            // Not on WebOS or dev environment
+            const id = getVirtualId();
+            localStorage.setItem('watchnow_okp_id', id);
+            resolve(id);
+        }
+    });
+}
+
+async function verifyLicense(okpId) {
+    const licenseScreen = document.getElementById('license-screen');
+    const idDisplay = document.getElementById('license-okp-id');
+    const statusDisplay = document.getElementById('license-status');
+    const qrContainer = document.getElementById('license-qr');
+
+    // Populate ID in UI
+    if (idDisplay) idDisplay.textContent = okpId;
+    if (qrContainer) {
+        qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://okplayer.app?id=${okpId}" alt="Scan to Buy">`;
+    }
+
+    try {
+        statusDisplay.textContent = "Connecting to server...";
+        // Call Portal API
+        const res = await fetch(`http://localhost:3000/api/device/verify?okpId=${okpId}`);
+        const data = await res.json();
+
+        if (data.active) {
+            // Success! Load App
+            if (licenseScreen) licenseScreen.style.display = 'none';
+
+            // Save License Info
+            const licenseInfo = {
+                status: 'Active',
+                expiresAt: data.expiresAt
+            };
+            localStorage.setItem('watchnow_license', JSON.stringify(licenseInfo));
+            updateLicenseUI(licenseInfo);
+
+            // Check for remote playlist sync
+            if (data.playlist) {
+                syncRemotePlaylistsFromServer(data.playlist);
+            }
+
+            initApp();
+        } else {
+            // Failed
+            statusDisplay.textContent = data.status === 'expired' ? "License Expired" : "Not Activated";
+            // Show Screen
+            if (licenseScreen) licenseScreen.style.display = 'flex';
+        }
+    } catch (e) {
+        console.error("License Check Failed", e);
+        statusDisplay.textContent = "Connection Error. Retrying...";
+        if (licenseScreen) licenseScreen.style.display = 'flex';
+
+        // Retry in 5s
+        setTimeout(() => verifyLicense(okpId), 5000);
+    }
+}
+
+function syncRemotePlaylist(url) {
+    const resources = JSON.parse(localStorage.getItem('watchnow_resources') || '[]');
+    const exists = resources.find(r => r.url === url);
+
+    if (!exists && url.startsWith('http')) {
+        console.log("Syncing remote playlist...");
+
+        const newResource = {
+            id: Date.now().toString(),
+            name: "Cloud Playlist",
+            url: url,
+            active: true,
+            status: 'pending',
+            stats: { channels: 0, movies: 0, series: 0 },
+            isLoading: false,
+            lastSynced: null
+        };
+        resources.push(newResource);
+        localStorage.setItem('watchnow_resources', JSON.stringify(resources));
+    }
+}
+
+function syncRemotePlaylistsFromServer(playlistJson) {
+    if (!playlistJson) return;
+
+    try {
+        const remoteResources = typeof playlistJson === 'string' ? JSON.parse(playlistJson) : playlistJson;
+        // Should be an array of resources
+
+        if (!Array.isArray(remoteResources)) {
+            // It might be single URL string from old backend logic
+            if (typeof remoteResources === 'string' && remoteResources.startsWith('http')) {
+                syncRemotePlaylist(remoteResources);
+            }
+            return;
+        }
+
+        const localResources = JSON.parse(localStorage.getItem('watchnow_resources') || '[]');
+        let changed = false;
+
+        remoteResources.forEach(remote => {
+            // Check existence by ID or URL (to avoid dupes)
+            const exists = localResources.find(l => (l.id === remote.id) || (l.url === remote.url && l.name === remote.name));
+
+            if (!exists) {
+                // Add new
+                localResources.push({
+                    ...remote,
+                    active: true,
+                    status: 'pending',
+                    stats: { channels: 0, movies: 0, series: 0 },
+                    lastSynced: null
+                });
+                changed = true;
+            } else {
+                // Potential update logic here (e.g. name change), keeping simple for now
+                // We could update URL/Creds if they changed
+                if (exists.url !== remote.url || JSON.stringify(exists.credentials) !== JSON.stringify(remote.credentials)) {
+                    exists.url = remote.url;
+                    exists.credentials = remote.credentials;
+                    exists.type = remote.type;
+                    exists.status = 'pending'; // Force re-sync
+                    changed = true;
+                }
+            }
+        });
+
+        // Identify and remove deleted resources
+        // We only remove resources that look "managed" (optional thought), but for now if the server sends a full list,
+        // we should probably sync to exactly that list.
+        const remoteIds = new Set(remoteResources.map(r => r.id));
+
+        // Find local items NOT in remote items (matched by ID or Name/URL heuristic for safety)
+        const toDelete = localResources.filter(l => {
+            const foundInRemote = remoteResources.some(r => r.id === l.id || (r.url === l.url && r.name === l.name));
+            return !foundInRemote;
+        });
+
+        toDelete.forEach(del => {
+            // Remove from local list
+            const idx = localResources.indexOf(del);
+            if (idx > -1) {
+                localResources.splice(idx, 1);
+                // Also cleanup DB
+                deletePlaylistDataFromDB(del.id);
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            localStorage.setItem('watchnow_resources', JSON.stringify(localResources));
+            // We should NOT call saveResources() here as it triggers syncToBackend -> infinite loop
+            // Just update state if we are running
+            state.resources = localResources;
+
+            // Re-render resources list to reflect deletions immediately
+            renderResourcesList();
+        }
+
+    } catch (e) {
+        console.error("Failed to sync remote playlists", e);
+    }
+}
 
 async function initApp() {
     loadResourcesFromStorage();
@@ -102,7 +311,7 @@ async function initApp() {
     loadAppSettings();  // Load settings early
     setupNavigation();
     setupResourcesUI();
-    setupSearch();
+    // setupSearch(); // Semantic Search Removed
     VideoPlayer.init();
     setupSettings();
     setupFavoritesKeyHandler();
@@ -112,10 +321,45 @@ async function initApp() {
     await loadCachedContent();
 
     nav.init();
-    switchToView('favorites');
+    switchToView('home');
+
+    // Trigger initial sync to backend (push any local playlists)
+    syncToBackend();
 
     // Initial Lucide icons
     lucide.createIcons();
+
+    // Ensure Settings UI shows ID (it should have been generated by now)
+    const deviceMac = document.getElementById('device-mac');
+    if (deviceMac) {
+        deviceMac.textContent = localStorage.getItem('watchnow_okp_id') || 'Error';
+    }
+
+    // Load License Info
+    const storedLicense = localStorage.getItem('watchnow_license');
+    if (storedLicense) {
+        updateLicenseUI(JSON.parse(storedLicense));
+    }
+}
+
+function updateLicenseUI(info) {
+    const statusEl = document.getElementById('license-info-status');
+    const expiresEl = document.getElementById('license-info-expires');
+
+    if (statusEl) {
+        statusEl.textContent = info.status;
+        if (info.status === 'Active') statusEl.style.color = '#10b981'; // Green
+    }
+
+    if (expiresEl) {
+        if (!info.expiresAt) {
+            expiresEl.textContent = 'Lifetime';
+            expiresEl.style.color = 'var(--primary-color)';
+        } else {
+            const date = new Date(info.expiresAt);
+            expiresEl.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+    }
 }
 
 // --- Resource Management ---
@@ -152,6 +396,68 @@ function saveResources() {
         type: r.type || 'm3u',
         credentials: r.credentials || null
     }))));
+    // Trigger sync to backend
+    syncToBackend();
+}
+
+const APP_VERSION = '0.0.37';
+
+function getPlatform() {
+    if (window.webOS) return "LG WebOS";
+    if (navigator.userAgent.includes("Tizen")) return "Samsung Tizen";
+    if (navigator.userAgent.includes("Android")) return "Android TV";
+    return "Web Browser";
+}
+
+async function syncToBackend() {
+    const okpId = localStorage.getItem('watchnow_okp_id');
+    if (!okpId) return;
+
+    try {
+        const resources = state.resources.map(r => ({
+            id: r.id,
+            name: r.name,
+            url: r.url,
+            active: r.active,
+            stats: r.stats,
+            lastSynced: r.lastSynced,
+            type: r.type || 'm3u',
+            credentials: r.credentials || null
+        }));
+
+        const res = await fetch('http://localhost:3000/api/device/sync', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                okpId: okpId,
+                resources: resources,
+                appPlatform: getPlatform(),
+                appVersion: APP_VERSION
+            })
+        });
+
+        if (!res.ok) {
+            console.error("Sync response not OK", res.status);
+        } else {
+            console.log("Sync to backend successful");
+        }
+    } catch (e) {
+        console.error("Failed to sync to backend", e);
+    }
+}
+
+function updateResource(id, name, url, options = {}) {
+    const res = state.resources.find(r => r.id === id);
+    if (res) {
+        res.name = name;
+        res.url = url;
+        res.type = options.type || 'm3u';
+        res.credentials = options.credentials || null;
+        res.status = 'pending'; // Force re-sync
+        saveResources();
+    }
 }
 
 function addResource(name, url, options = {}) {
@@ -1082,8 +1388,16 @@ function handleNestedCategoryClick(viewId, groupName, items, itemsSidebar, conte
 
 
 
-async function handleNestedMediaClick(item, type, cardElement) {
-    const contentArea = cardElement.closest('.nested-content-area');
+async function handleNestedMediaClick(item, type, cardElement, options = {}) {
+    const { startTime = 0, season = null, episode = null, parentContainer = null, onBack = null } = options;
+
+    let contentArea;
+    if (parentContainer) {
+        contentArea = parentContainer;
+    } else {
+        contentArea = cardElement ? cardElement.closest('.nested-content-area') : null;
+    }
+
     if (!contentArea) {
         console.error("Content area not found");
         return;
@@ -1116,6 +1430,12 @@ async function handleNestedMediaClick(item, type, cardElement) {
     }
 
     if (existingGrid) existingGrid.style.display = 'none';
+
+    if (parentContainer) {
+        Array.from(parentContainer.children).forEach(c => {
+            if (c !== panel) c.style.display = 'none';
+        });
+    }
 
     if (!panel) {
         panel = document.createElement('div');
@@ -1196,7 +1516,12 @@ async function handleNestedMediaClick(item, type, cardElement) {
 
     panel.querySelector('.back-to-grid-btn').addEventListener('click', () => {
         panel.remove();
-        if (existingGrid) existingGrid.style.display = '';
+
+        if (onBack) {
+            onBack();
+        } else if (existingGrid) {
+            existingGrid.style.display = '';
+        }
 
         if (cardElement && typeof nav !== 'undefined') {
             setTimeout(() => {
@@ -1225,14 +1550,19 @@ async function handleNestedMediaClick(item, type, cardElement) {
     }
 
     // Player Init Function
-    const playContent = (streamUrl, epTitle, epContainerId = '#nested-player-container') => {
+    const playContent = (streamUrl, epTitle, metadata = {}, epContainerId = '#nested-player-container', startPos = 0) => {
         const container = panel.querySelector(epContainerId);
 
         container.innerHTML = '';
-        const playItem = { url: streamUrl, title: `${item.title} - ${epTitle}` };
+        const playItem = {
+            url: streamUrl,
+            title: `${item.title}${epTitle && epTitle !== item.title ? ' - ' + epTitle : ''}`,
+            logo: posterUrl || item.logo,
+            ...metadata
+        };
         const infoContainer = panel.querySelector('#track-info-container');
         if (window.VideoPlayer) {
-            VideoPlayer.play(playItem, type, container, infoContainer);
+            VideoPlayer.play(playItem, type, container, infoContainer, startPos);
         } else {
             console.error("VideoPlayer not loaded");
         }
@@ -1293,7 +1623,13 @@ async function handleNestedMediaClick(item, type, cardElement) {
                         return;
                     }
 
-                    playContent(url, ep.title);
+                    playContent(url, ep.title, {
+                        season: seasonNum,
+                        episode: ep.episode_num,
+                        seriesId: item.id,
+                        seriesTitle: item.title,
+                        source: item.source
+                    });
                 });
 
                 el.addEventListener('keydown', (e) => {
@@ -1328,7 +1664,40 @@ async function handleNestedMediaClick(item, type, cardElement) {
         });
 
         if (seasons.length > 0) {
-            renderEpisodes(seasons[0]);
+            const targetSeason = (season && seasons.includes(String(season))) ? String(season) : seasons[0];
+
+            // Update tabs UI
+            if (targetSeason !== seasons[0]) {
+                seasonTabsContainer.querySelectorAll('.season-tab').forEach(t => {
+                    t.classList.toggle('active', t.textContent.includes(`Season ${targetSeason}`));
+                });
+            }
+
+            renderEpisodes(targetSeason);
+
+            if (episode) {
+                const targetEp = episodes[targetSeason].find(e => e.episode_num == episode);
+                if (targetEp) {
+                    // Highlight card
+                    episodesList.querySelectorAll('.episode-card-vertical').forEach(el => {
+                        if (el.querySelector('.ep-num-badge').textContent === `EP ${targetEp.episode_num}`) {
+                            el.classList.add('active');
+                        }
+                    });
+                    // Play
+                    if (resource && resource.credentials) {
+                        const { host, username, password } = resource.credentials;
+                        const url = `${host}/series/${username}/${password}/${targetEp.id}.${targetEp.container_extension}`;
+                        playContent(url, targetEp.title, {
+                            season: targetSeason,
+                            episode: targetEp.episode_num,
+                            seriesId: item.id,
+                            seriesTitle: item.title,
+                            source: item.source
+                        }, '#nested-player-container', startTime);
+                    }
+                }
+            }
         }
 
     } else {
@@ -1336,11 +1705,16 @@ async function handleNestedMediaClick(item, type, cardElement) {
         if (playBtn) {
             playBtn.addEventListener('click', () => {
                 if (item.url) {
-                    playContent(item.url, item.title);
+                    playContent(item.url, item.title, { movieId: item.id, source: item.source });
                 } else {
                     console.error("No stream URL for movie");
                 }
             });
+        }
+
+        // Auto-play movie resume
+        if (startTime > 0 && item.url) {
+            playContent(item.url, item.title, { movieId: item.id, source: item.source }, '#nested-player-container', startTime);
         }
     }
 
@@ -1954,6 +2328,8 @@ function switchToView(targetId) {
     // Render favorites view when switching to it
     if (targetId === 'favorites') {
         renderFavoritesView();
+    } else if (targetId === 'home') {
+        renderHomeView();
     }
 
     // Refocus
@@ -2189,72 +2565,207 @@ function matchSearchQuery(text, query) {
     return queryWords.every(word => lowerText.includes(word));
 }
 
-function setupSearch() {
-    // Setup global search (in Search view)
-    const globalInput = document.getElementById('global-search-input');
-    const resultsContainer = document.getElementById('search-results');
+// --- Home View & Continue Watching ---
 
-    if (globalInput && resultsContainer) {
-        let debounceTimer;
-        globalInput.addEventListener('input', (e) => {
-            syncResetButton(globalInput);
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                performGlobalSearch(e.target.value);
-            }, 500);
-        });
+function renderHomeView() {
+    const container = document.getElementById('continue-watching-carousel');
+    const section = document.getElementById('continue-watching-section');
+    if (!container || !section) return;
 
-        const globalResetBtn = document.querySelector('[data-target="global-search-input"]');
-        if (globalResetBtn) {
-            globalResetBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleResetClick(globalResetBtn);
-            });
-        }
+    // Load progress
+    let progressData = {};
+    try {
+        const stored = localStorage.getItem('watchnow_watch_progress');
+        if (stored) progressData = JSON.parse(stored);
+    } catch (e) { console.error("Error loading progress", e); }
+
+    // Filter and Sort
+    // Condition: watch_time > 2 mins AND remaining > 5 mins
+    const now = Date.now();
+    const items = Object.values(progressData)
+        .filter(item => {
+            if (!item.duration || !item.time) return false;
+            const remaining = item.duration - item.time;
+            const watched = item.time;
+
+            if (remaining < 300) return false; // Less than 5 min remaining = watched
+            if (watched < 120) return false;   // Less than 2 min watched = ignored
+
+            return true;
+        })
+        .sort((a, b) => (b.lastWatched || 0) - (a.lastWatched || 0));
+
+    if (items.length === 0) {
+        section.style.display = 'none';
+        container.innerHTML = '';
+        return;
     }
 
-    function performGlobalSearch(query) {
-        state.searchQuery = query.toLowerCase();
-        resultsContainer.innerHTML = '';
+    section.style.display = 'block';
+    container.innerHTML = '';
 
-        if (state.searchQuery.length < 2) return;
+    // Force horizontal layout logic overrides
+    container.style.display = 'flex';
+    container.style.overflowX = 'auto';
+    container.style.flexWrap = 'nowrap';
+    container.style.gap = '24px';
+    container.style.paddingBottom = '30px'; // Space for scrollbar
 
-        // Search across all aggregated data
-        const matches = [];
-        ['channels', 'movies', 'series'].forEach(cat => {
-            const catData = state.aggregatedData[cat];
-            Object.values(catData).forEach(list => {
-                list.forEach(item => {
-                    if (matchSearchQuery(item.title, state.searchQuery)) {
-                        matches.push({ ...item, type: cat });
+    items.forEach(prog => {
+        // Reconstruct item for Card
+        const item = prog.item || {
+            title: prog.title || 'Unknown',
+            url: prog.url,
+            logo: prog.logo
+        };
+
+        // WRAPPER: Contains Card (Image) + Meta (Text below)
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'flex';
+        wrapper.style.flexDirection = 'column';
+        wrapper.style.gap = '10px';
+        wrapper.style.width = '220px'; // Fixed width for carousel items
+        wrapper.style.flex = '0 0 auto';
+
+        // 1. CARD (Poster Image)
+        const originalCard = createCard(item, prog.type || 'movies');
+        const card = originalCard.cloneNode(true);
+
+        // Re-attach focus tracking
+        card.addEventListener('focus', () => { state.focusedItem = { item, type: prog.type || 'movies', card }; });
+        card.addEventListener('mouseenter', () => { state.focusedItem = { item, type: prog.type || 'movies', card }; });
+
+        // Add Resume click handler
+        card.addEventListener('click', () => {
+            const homeContent = document.getElementById('home-content');
+            const type = prog.type || 'movies';
+
+            // Reconstruct correct item based on Type
+            const clickItem = { ...item };
+            if (prog.type === 'series' && prog.item && prog.item.seriesId) {
+                clickItem.id = prog.item.seriesId;
+                clickItem.title = prog.item.seriesTitle || clickItem.title;
+                clickItem.source = prog.item.source;
+            } else if (prog.type === 'movies') {
+                if (prog.item && prog.item.movieId) clickItem.id = prog.item.movieId;
+                if (prog.item && prog.item.source) clickItem.source = prog.item.source;
+            }
+
+            handleNestedMediaClick(clickItem, type, card, {
+                season: prog.season,
+                episode: prog.episode,
+                startTime: prog.time,
+                parentContainer: homeContent,
+                onBack: () => {
+                    if (homeContent) {
+                        Array.from(homeContent.children).forEach(c => c.style.display = '');
+                        const existingPanel = homeContent.querySelector('.movie-detail-panel');
+                        if (existingPanel) existingPanel.remove();
+                        renderHomeView();
+                        const newContainer = document.getElementById('continue-watching-carousel');
+                        if (newContainer && newContainer.firstChild && typeof nav !== 'undefined') {
+                            nav.setFocus(newContainer.firstChild);
+                        }
                     }
-                });
+                }
             });
         });
 
-        // Limit results
-        const displayMatches = matches.slice(0, 50);
+        // Modify card styling for the wrapper context
+        card.style.width = '100%';
+        card.style.height = '330px'; // Aspect ratio approx 2:3
+        card.style.flex = 'none';
+        card.style.marginBottom = '0'; // Remove any default margin
 
-        if (displayMatches.length === 0) {
-            resultsContainer.innerHTML = '<div style="padding:20px;">No results found.</div>';
-            return;
+        // Ensure image uses the correct logo from progress if available
+        if (prog.logo) {
+            const img = card.querySelector('img');
+            if (img && img.src !== prog.logo) img.src = prog.logo;
         }
 
-        // Render simple Grid for results
-        const grid = document.createElement('div');
-        grid.style.display = 'grid';
-        grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(280px, 1fr))';
-        grid.style.gap = '40px';
+        // Add Progress Bar (On the card image, bottom edge)
+        const percent = Math.min(100, Math.max(0, (prog.time / prog.duration) * 100));
 
-        displayMatches.forEach(item => {
-            const card = createCard(item, item.type === 'channels' ? 'live' : item.type);
-            grid.appendChild(card);
-        });
+        const barContainer = document.createElement('div');
+        barContainer.style.position = 'absolute';
+        barContainer.style.bottom = '0';
+        barContainer.style.left = '0';
+        barContainer.style.width = '100%';
+        barContainer.style.height = '4px';
+        barContainer.style.background = 'rgba(255,255,255,0.2)';
+        barContainer.style.zIndex = '20';
 
-        resultsContainer.appendChild(grid);
-    }
+        const barFill = document.createElement('div');
+        barFill.style.width = `${percent}%`;
+        barFill.style.height = '100%';
+        barFill.style.background = 'var(--primary-color)';
+        barContainer.appendChild(barFill);
 
+        card.appendChild(barContainer);
+
+        // Adjust default overlay in card to not hide/conflict
+        const defaultOverlay = card.querySelector('.card-overlay');
+        if (defaultOverlay) {
+            defaultOverlay.style.background = 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)';
+            // Hide status badge in continue watching
+            const badge = defaultOverlay.querySelector('.status-badge');
+            if (badge) badge.style.display = 'none';
+        }
+
+        wrapper.appendChild(card);
+
+        // 2. META INFO (Text Below Card)
+        const metaRow = document.createElement('div');
+        metaRow.style.display = 'flex';
+        metaRow.style.justifyContent = 'space-between';
+        metaRow.style.alignItems = 'center';
+        metaRow.style.padding = '0 4px';
+        metaRow.style.opacity = '0.8';
+
+        // Left Side: Icon + S/E
+        const leftTags = document.createElement('div');
+        leftTags.style.display = 'flex';
+        leftTags.style.alignItems = 'center';
+        leftTags.style.gap = '8px';
+        leftTags.style.color = '#a1a1aa'; // text-secondary
+        leftTags.style.fontSize = '18px';
+        leftTags.style.fontWeight = '500';
+
+        let iconName = 'film'; // Default movie
+        if (prog.type === 'series') iconName = 'clapperboard';
+        else if (prog.type === 'live') iconName = 'tv';
+
+        let tagText = '';
+        if (prog.type === 'series') {
+            if (prog.season && prog.episode) {
+                tagText = `S${prog.season} E${prog.episode}`;
+            } else {
+                // Fallback if data missing but we describe it's a series
+                tagText = 'Series';
+            }
+        }
+
+        leftTags.innerHTML = `
+            <i data-lucide="${iconName}" style="width:22px; height:22px;"></i>
+            <span>${tagText}</span>
+        `;
+
+        // Right Side: Percentage
+        const rightTag = document.createElement('div');
+        rightTag.className = 'watch-percentage';
+        rightTag.style.fontSize = '22px';
+        rightTag.style.color = 'var(--primary-color)';
+        rightTag.style.fontWeight = 'bold';
+        rightTag.textContent = `${Math.round(percent)}%`;
+
+        metaRow.appendChild(leftTags);
+        metaRow.appendChild(rightTag);
+
+        wrapper.appendChild(metaRow);
+        container.appendChild(wrapper);
+    });
+
+    if (window.lucide) lucide.createIcons({ root: container });
 }
 
 // Setup category search handlers - called after content views are rendered
@@ -2714,56 +3225,11 @@ function loadDeviceInfo() {
         }
     });
 
-    // 3. OKP ID (Derived from LGUDID or Virtual ID)
-    const updateOkpUi = (finalId) => {
-        const el = document.getElementById('device-mac');
-        if (el) {
-            el.textContent = finalId;
-        }
-    };
-
-    const setOkpId = (rawId) => {
-        const okpId = generateDeterministicMac(rawId);
-        console.log("Raw ID:", rawId, "-> OKP ID:", okpId);
-        localStorage.setItem('watchnow_okp_id', okpId);
-        updateOkpUi(okpId);
-    };
-
-    // Check if we already have a generated OKP ID saved
+    // 3. OKP ID (Already initialized)
     const storedOkpId = localStorage.getItem('watchnow_okp_id');
     if (storedOkpId) {
-        updateOkpUi(storedOkpId);
-        // We still log it or check it? No, user wants it saved and used.
-    } else {
-        // Not found, try to fetch UDID and generate it
-        webOS.service.request("luna://com.webos.service.sm", {
-            method: "deviceid/getIDs",
-            parameters: {
-                "idType": ["LGUDID"]
-            },
-            onSuccess: function (inResponse) {
-                let deviceId = null;
-                if (inResponse.idList && inResponse.idList.length > 0 && inResponse.idList[0].idValue) {
-                    deviceId = inResponse.idList[0].idValue;
-                    setOkpId(deviceId);
-                } else {
-                    useVirtualId();
-                }
-            },
-            onFailure: function (inError) {
-                console.error("Failed to get device ID", inError);
-                useVirtualId();
-            }
-        });
-    }
-
-    function useVirtualId() {
-        let vId = localStorage.getItem('watchnow_virtual_device_id');
-        if (!vId) {
-            vId = 'virtual_' + Math.random().toString(36).substr(2) + Date.now();
-            localStorage.setItem('watchnow_virtual_device_id', vId);
-        }
-        setOkpId(vId);
+        const el = document.getElementById('device-mac');
+        if (el) el.textContent = storedOkpId;
     }
 }
 

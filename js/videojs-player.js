@@ -90,7 +90,7 @@ class VideoPlayerService {
      * @param {HTMLElement} targetContainer - The DOM element to mount the player into
      * @param {HTMLElement} [infoContainer] - Optional container to display track info
      */
-    play(item, type = 'unknown', targetContainer, infoContainer = null) {
+    play(item, type = 'unknown', targetContainer, infoContainer = null, startTime = 0) {
         if (!targetContainer) {
             console.error('[VideoPlayer] No target container provided.');
             return;
@@ -101,6 +101,8 @@ class VideoPlayerService {
             const { url, mimeType } = this._resolveMedia(item.url, type);
             console.log(`[VideoPlayer] Playing: ${item.title || 'Unknown'} -> ${url}`);
 
+            this.currentItem = item;
+            this.currentType = type;
             this.infoContainer = infoContainer;
             if (this.infoContainer) {
                 this.infoContainer.innerHTML = '';
@@ -119,6 +121,9 @@ class VideoPlayerService {
             if (this.player) {
                 this.player.ready(() => {
                     this.player.src([{ src: url, type: mimeType }]);
+                    if (startTime > 0) {
+                        this.player.currentTime(startTime);
+                    }
                     this.player.play().catch(e => {
                         console.warn("[VideoPlayer] Playback failed or was blocked:", e);
                     });
@@ -209,6 +214,45 @@ class VideoPlayerService {
         this.player.on('waiting', () => this._toggleLoading(true));
         this.player.on('playing', () => this._toggleLoading(false));
         this.player.on('canplay', () => this._toggleLoading(false));
+
+        // Progress Tracker
+        this.player.on('timeupdate', () => {
+            const time = this.player.currentTime();
+            const duration = this.player.duration();
+
+            // Only track if valid duration and not live stream (unless it has duration like catchup)
+            // Infinity duration usually means live.
+            if (!duration || duration === Infinity || isNaN(duration)) return;
+
+            // Throttle: Save every 5s or so? Or just let it be fast enough since it's one key.
+            // Let's do a simple check to not save every millisecond. 
+            // Saving every 5s is good practice.
+            const now = Date.now();
+            if (this._lastSave && (now - this._lastSave < 5000)) return;
+            this._lastSave = now;
+
+            if (this.currentItem && this.currentItem.url) {
+                try {
+                    const storeKey = 'watchnow_watch_progress';
+                    const data = JSON.parse(localStorage.getItem(storeKey) || '{}');
+
+                    data[this.currentItem.url] = {
+                        url: this.currentItem.url,
+                        title: this.currentItem.title,
+                        logo: this.currentItem.logo || null,
+                        season: this.currentItem.season || null,
+                        episode: this.currentItem.episode || null,
+                        item: this.currentItem, // Full item for card reconstruction
+                        type: this.currentType,
+                        time: time,
+                        duration: duration,
+                        lastWatched: now
+                    };
+
+                    localStorage.setItem(storeKey, JSON.stringify(data));
+                } catch (e) { console.error("Tracking Error", e); }
+            }
+        });
 
         this.player.on('error', () => {
             const err = this.player.error();

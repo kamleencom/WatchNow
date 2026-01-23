@@ -28,6 +28,27 @@
 	<!-- Background Ambient Glow -->
 	<div class="ambient-glow"></div>
 
+	<!-- License Verification Screen -->
+	<div id="license-screen" style="display: none;">
+		<div class="license-container">
+			<div class="license-title">License Verification</div>
+			<div class="license-text">
+				Your device is not activated. Please verify/subscribe at<br>
+				<span style="color:#fff; font-weight:600;">okplayer.app</span>
+			</div>
+
+			<div class="qr-placeholder" id="license-qr"></div>
+
+			<div class="license-text">Use your OKP ID to activate:</div>
+			<div class="license-id-box" id="license-okp-id">LOADING...</div>
+
+			<div class="license-text" style="font-size:14px; opacity:0.6;">
+				Status: <span id="license-status">Checking...</span>
+			</div>
+			<button class="btn btn-primary focusable" onclick="window.location.reload()">Refresh Check</button>
+		</div>
+	</div>
+
 	<div id="layout-container">
 		<!-- Sidebar -->
 		<aside id="main-sidebar">
@@ -39,10 +60,10 @@
 
 			<nav class="sidebar-nav">
 				<div class="sidebar-nav-section">
-					<div class="nav-item focusable auto-trigger" data-target="search" tabindex="0">
-						<span class="icon"><i data-lucide="search"></i></span>
+					<div class="nav-item focusable active auto-trigger" data-target="home" tabindex="0">
+						<span class="icon"><i data-lucide="home"></i></span>
 					</div>
-					<div class="nav-item focusable active auto-trigger" data-target="favorites" tabindex="0">
+					<div class="nav-item focusable auto-trigger" data-target="favorites" tabindex="0">
 						<span class="icon"><i data-lucide="star"></i></span>
 					</div>
 				</div>
@@ -87,20 +108,19 @@
 
 			<!-- Views -->
 
-			<!-- Search View -->
-			<section id="search" class="view-section">
+			<!-- Home View -->
+			<section id="home" class="view-section">
 				<header class="section-header">
-					<h1>Search</h1>
-					<div class="search-bar-container" style="display: flex; align-items: center;">
-						<button class="search-reset-btn focusable" style="display:none;"
-							data-target="global-search-input">
-							<i data-lucide="x-circle"></i>
-						</button>
-						<input type="text" id="global-search-input" class="focusable"
-							placeholder="Search movies, series, channels...">
-					</div>
+					<h1>Home</h1>
 				</header>
-				<div id="search-results" class="content-rows"></div>
+				<div id="home-content">
+					<!-- Continue Watching Section -->
+					<div id="continue-watching-section" style="display:none; padding: 40px; margin-bottom: 40px;">
+						<h2 class="section-title">Continue Watching</h2>
+						<div id="continue-watching-carousel" class="favorites-grid"
+							style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));"></div>
+					</div>
+				</div>
 			</section>
 
 			<!-- Favorites View -->
@@ -261,6 +281,24 @@
 							<span class="setting-description">Reset app and remove all playlists</span>
 						</div>
 						<button id="reset-app-btn" class="btn btn-danger">Reset App</button>
+					</div>
+
+
+					<div class="setting-item">
+						<div class="setting-info setting-info-full">
+							<span class="setting-label device-section-title">License Information</span>
+							<div class="device-details-grid">
+								<div class="device-detail-item">
+									<span class="device-label">Status</span>
+									<span id="license-info-status" class="device-value"
+										style="color:var(--primary-color)">Checking...</span>
+								</div>
+								<div class="device-detail-item">
+									<span class="device-label">Expires At</span>
+									<span id="license-info-expires" class="device-value">-</span>
+								</div>
+							</div>
+						</div>
 					</div>
 
 					<div class="setting-item">
