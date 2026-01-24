@@ -63,9 +63,6 @@
 					<div class="nav-item focusable active auto-trigger" data-target="home" tabindex="0">
 						<span class="icon"><i data-lucide="home"></i></span>
 					</div>
-					<div class="nav-item focusable auto-trigger" data-target="favorites" tabindex="0">
-						<span class="icon"><i data-lucide="star"></i></span>
-					</div>
 				</div>
 				<div class="sidebar-nav-section">
 					<div class="nav-item focusable auto-trigger" data-target="live" tabindex="0">
@@ -114,54 +111,64 @@
 					<h1>Home</h1>
 				</header>
 				<div id="home-content">
+					<!-- Welcome Section -->
+					<div id="welcome-section" class="welcome-container">
+						<div class="weather-panel">
+							<div id="weather-icon-container" class="weather-icon-wrapper">
+								<!-- Icon will be injected here -->
+								<img id="weather-icon" src="" alt="Weather Icon" style="display:none;">
+							</div>
+							<div class="weather-info">
+								<div id="weather-temp" class="weather-temp">--°C</div>
+								<div class="weather-text-details">
+									<div id="weather-desc" class="weather-desc">Loading Weather...</div>
+									<div id="weather-location" class="weather-location"></div>
+								</div>
+							</div>
+						</div>
+						<div class="time-panel">
+							<div id="current-time" class="big-time">--:--</div>
+							<div id="current-date" class="current-date">--</div>
+						</div>
+					</div>
+
 					<!-- Continue Watching Section -->
-					<div id="continue-watching-section" style="display:none; padding: 40px; margin-bottom: 40px;">
+					<div id="continue-watching-section" style="display:none; padding: 40px;">
 						<h2 class="section-title">Continue Watching</h2>
 						<div id="continue-watching-carousel" class="favorites-grid"
+							style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));"></div>
+					</div>
+
+					<!-- Favorite Channels Section -->
+					<div id="home-fav-channels-section" style="display:none; padding: 40px;">
+						<h2 class="section-title">Favorite Channels</h2>
+						<div id="home-fav-channels-carousel" class="favorites-grid"
+							style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));"></div>
+					</div>
+
+					<!-- Favorite Buckets Section -->
+					<div id="home-fav-buckets-section" style="display:none; padding: 40px;">
+						<h2 class="section-title">Favorite Buckets</h2>
+						<div id="home-fav-buckets-carousel" class="favorites-grid"
+							style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));"></div>
+					</div>
+
+					<!-- Favorite Movies Section -->
+					<div id="home-fav-movies-section" style="display:none; padding: 40px;">
+						<h2 class="section-title">Favorite Movies</h2>
+						<div id="home-fav-movies-carousel" class="favorites-grid"
+							style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));"></div>
+					</div>
+
+					<!-- Favorite Series Section -->
+					<div id="home-fav-series-section" style="display:none; padding: 40px;">
+						<h2 class="section-title">Favorite Series</h2>
+						<div id="home-fav-series-carousel" class="favorites-grid"
 							style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));"></div>
 					</div>
 				</div>
 			</section>
 
-			<!-- Favorites View -->
-			<section id="favorites" class="view-section">
-				<header class="section-header">
-					<h1>Favorites</h1>
-					<p class="favorites-hint">Press <span class="key-hint yellow">Yellow</span> button on remote to
-						add/remove favorites</p>
-				</header>
-				<div id="favorites-content">
-					<!-- Favorite Channels Section -->
-					<div id="fav-channels-section" class="favorites-section">
-						<h2 class="section-title"><i data-lucide="tv" class="inline-icon"></i> Favorite Channels</h2>
-						<div id="fav-channels-grid" class="favorites-grid"></div>
-					</div>
-					<!-- Favorite Movies Section -->
-					<div id="fav-movies-section" class="favorites-section">
-						<h2 class="section-title"><i data-lucide="film" class="inline-icon"></i> Favorite Movies</h2>
-						<div id="fav-movies-grid" class="favorites-grid"></div>
-					</div>
-					<!-- Favorite Series Section -->
-					<div id="fav-series-section" class="favorites-section">
-						<h2 class="section-title"><i data-lucide="clapperboard" class="inline-icon"></i> Favorite Series
-						</h2>
-						<div id="fav-series-grid" class="favorites-grid"></div>
-					</div>
-					<!-- Favorite Buckets Section -->
-					<div id="fav-buckets-section" class="favorites-section">
-						<h2 class="section-title"><i data-lucide="folder-kanban" class="inline-icon"></i> Favorite
-							Buckets</h2>
-						<div id="fav-buckets-grid" class="favorites-grid"></div>
-					</div>
-					<!-- Empty State -->
-					<div id="fav-empty-state" class="empty-state" style="display:none;">
-						<span class="empty-icon"><i data-lucide="star"></i></span>
-						<p>No favorites yet</p>
-						<p class="empty-hint">Press the Yellow button on your remote while hovering over a channel,
-							movie, or series to add it to favorites.</p>
-					</div>
-				</div>
-			</section>
 
 			<!-- Live TV View -->
 			<section id="live" class="view-section active">
@@ -245,6 +252,8 @@
 				</div>
 			</section>
 
+
+
 			<!-- Resources View (Playlist Manager) -->
 			<section id="resources" class="view-section">
 				<header class="section-header">
@@ -264,15 +273,7 @@
 					<h1>Settings</h1>
 				</header>
 				<div class="settings-container">
-					<div class="setting-item focusable" tabindex="0">
-						<div class="setting-info">
-							<span class="setting-label">Check Stream Status</span>
-							<span class="setting-description">Enable or disable automatic stream status checking</span>
-						</div>
-						<div class="toggle-switch" id="toggle-link-status">
-							<div class="toggle-knob"></div>
-						</div>
-					</div>
+
 
 
 					<div class="setting-item focusable" tabindex="0">
@@ -388,6 +389,10 @@
 	</div>
 
 	<script src="js/components/confirmation-modal.js"></script>
+	<script src="js/components/media-card.js"></script>
+	<script src="js/components/player-container.js"></script>
+	<script src="js/components/view-layout-factory.js"></script>
+	<script src="js/components/channel-list-item.js"></script>
 
 	<!-- Player Overlay -->
 	<div id="player-overlay">
@@ -446,7 +451,25 @@
 	<script src="js/navigation.js"></script>
 
 	<script src="js/videojs-player.js"></script>
-	<script src="js/app.js"></script>
+	<script src="js/services/storage-service.js"></script>
+	<script src="js/services/weather-service.js"></script>
+	<script src="js/services/api-service.js"></script>
+	<script src="js/managers/license-manager.js"></script>
+	<script src="js/managers/favorites-manager.js"></script>
+
+	<!-- Modular Architecture -->
+	<script src="js/state.js"></script>
+	<script src="js/utils/helpers.js"></script>
+	<script src="js/views/home-view.js"></script>
+	<script src="js/views/live-view.js"></script>
+	<script src="js/views/vod-view.js"></script>
+	<script src="js/views/settings-view.js"></script>
+
+	<script src="js/managers/router.js"></script>
+	<script src="js/managers/search-manager.js"></script>
+	<script src="js/managers/playlist-manager.js"></script>
+	<script src="js/managers/app-manager.js"></script>
+
 </body>
 
 </html>

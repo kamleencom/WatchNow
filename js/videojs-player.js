@@ -45,8 +45,6 @@ const MIME_TYPES = {
     'mpd': 'application/dash+xml',
     'mp4': 'video/mp4',
     'webm': 'video/webm',
-    'mp4': 'video/mp4',
-    'webm': 'video/webm',
     'mkv': 'video/webm',
     'ts': 'application/x-mpegURL'
 };

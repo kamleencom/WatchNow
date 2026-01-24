@@ -5,7 +5,7 @@
 
 class SpatialNavigation {
     constructor() {
-        this.focusableSelector = '.focusable';
+        this.focusableSelector = '.focusable, .vjs-button';
         this.activeClass = 'focused';
         this.currentFocus = null;
         this.root = document.body;
@@ -17,7 +17,7 @@ class SpatialNavigation {
         this.focusFirst();
 
         // Keyboard listener
-        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        document.addEventListener('keydown', (e) => this.handleKeyDown(e), { capture: true });
 
         // Update focus on click to sync state (without scrolling)
         document.addEventListener('click', (e) => {
@@ -39,6 +39,12 @@ class SpatialNavigation {
         if (!this.currentFocus || !document.contains(this.currentFocus)) {
             this.focusFirst();
             return;
+        }
+
+        // If focus is on an input field, allow default typing behavior for non-navigation keys
+        if (this.currentFocus && this.currentFocus.tagName === 'INPUT') {
+            const isNav = [37, 38, 39, 40, 13, 27].includes(e.keyCode);
+            if (!isNav) return;
         }
 
         const navKeyCodes = [37, 38, 39, 40, 13, 415, 19, 461]; // Arrow keys, Enter, Play, Pause, Back
@@ -63,7 +69,17 @@ class SpatialNavigation {
                 this.moveFocus('down');
                 break;
             case 13: // Enter/OK
-                this.triggerAction();
+                if (this.currentFocus) {
+                    // Force click event for robustness
+                    this.currentFocus.click();
+                    // Some TV browsers need explicit dispatch if .click() is shallow
+                    const event = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    });
+                    this.currentFocus.dispatchEvent(event);
+                }
                 break;
             case 403: // Red button (WebOS)
             case 461: // Back (WebOS)
@@ -100,9 +116,10 @@ class SpatialNavigation {
         this.currentFocus = element;
         this.currentFocus.classList.add(this.activeClass);
 
-        // If moving to an input, focus it browser-side
-        if (this.currentFocus.tagName === 'INPUT') {
-            this.currentFocus.focus();
+        // Always trigger native focus so that 'focus' events fire (important for app logic like favorites)
+        // Use preventScroll: true because we handle scrolling manually below
+        if (typeof this.currentFocus.focus === 'function') {
+            this.currentFocus.focus({ preventScroll: true });
         }
 
         if (scroll) {
@@ -150,8 +167,64 @@ class SpatialNavigation {
         // effectively allowing freedom, unless we are trapped?
         // User request focused on restricting sidebars.
         if (region === 'content') {
+            // Special handling for Horizontal Scrollable Lists (Home View Carousels)
+            // Fixes unreliable geometric navigation in horizontal flex containers
+            const carouselContainer = this.currentFocus.closest('.favorites-grid');
+            if (carouselContainer) {
+                const style = window.getComputedStyle(carouselContainer);
+                const isFlex = style.display === 'flex' || style.display === 'inline-flex';
+
+                if (isFlex) {
+                    const focusables = Array.from(carouselContainer.querySelectorAll(this.focusableSelector))
+                        .filter(el => this.isVisible(el));
+
+                    const currentIndex = focusables.indexOf(this.currentFocus);
+
+                    if (currentIndex !== -1) {
+                        if (direction === 'right' && currentIndex < focusables.length - 1) {
+                            this.setFocus(focusables[currentIndex + 1]);
+                            return;
+                        }
+                        if (direction === 'left' && currentIndex > 0) {
+                            this.setFocus(focusables[currentIndex - 1]);
+                            return;
+                        }
+                    }
+                }
+            }
+
             // Special handling for Nested Layouts
             const inNestedGrid = this.currentFocus.closest('.nested-content-area');
+
+            // Special Handling (Player Controls)
+            const inPlayer = this.currentFocus.classList.contains('vjs-button') || this.currentFocus.closest('.vjs-control-bar');
+            if (inPlayer) {
+                const playerContainer = this.currentFocus.closest('.video-js') || inNestedGrid;
+
+                if (direction === 'left') {
+                    // 1. Try generic left geometric WITHIN player
+                    if (this.moveFocusGeometric('left', playerContainer)) return;
+
+                    // 2. If blocked (start of bar), Escape to Sidebar
+                    const activeSection = this.getActiveSection();
+                    if (activeSection) {
+                        let targetSidebar = activeSection.querySelector('.items-sidebar.visible');
+                        if (!targetSidebar || !this.isVisible(targetSidebar)) {
+                            targetSidebar = activeSection.querySelector('.categories-sidebar');
+                        }
+                        if (targetSidebar && this.isVisible(targetSidebar)) {
+                            this.focusInContainer(targetSidebar);
+                            return;
+                        }
+                    }
+                    return;
+                }
+
+                if (direction === 'right') {
+                    this.moveFocusGeometric('right', playerContainer);
+                    return;
+                }
+            }
 
             if (inNestedGrid) {
                 // Special case for Movie/Series Detail Panel: handle Left to Column logic
@@ -198,14 +271,38 @@ class SpatialNavigation {
 
                 // Vertical Navigation within Detail Column (Shortcut Favorite <-> Back to List)
                 if (inDetail && this.currentFocus.closest('.detail-column')) {
-                    if (direction === 'up' && (this.currentFocus.id === 'detail-fav-btn' || this.currentFocus.closest('#detail-fav-btn'))) {
-                        const backBtn = inDetail.querySelector('.back-to-grid-btn');
-                        if (backBtn && this.isVisible(backBtn)) {
-                            this.setFocus(backBtn);
-                            return;
+
+                    // UP NAVIGATION
+                    if (direction === 'up') {
+                        // 1. From Favorite Button -> Try Play Button first
+                        if (this.currentFocus.id === 'detail-fav-btn' || this.currentFocus.closest('#detail-fav-btn')) {
+                            const playBtn = inDetail.querySelector('.play-now-btn');
+                            if (playBtn && this.isVisible(playBtn)) {
+                                this.setFocus(playBtn);
+                                return;
+                            }
+                        }
+
+                        // 2. From Play Button OR Favorite (if Play not found) -> Go to Back Button
+                        const isActionBtn = (this.currentFocus.id === 'detail-fav-btn' || this.currentFocus.closest('#detail-fav-btn')) ||
+                            (this.currentFocus.classList.contains('play-now-btn') || this.currentFocus.closest('.play-now-btn'));
+
+                        if (isActionBtn) {
+                            const backBtn = inDetail.querySelector('.back-to-grid-btn');
+                            if (backBtn && this.isVisible(backBtn)) {
+                                this.setFocus(backBtn);
+                                return;
+                            }
                         }
                     }
+
+                    // DOWN NAVIGATION
                     if (direction === 'down' && this.currentFocus.classList.contains('back-to-grid-btn')) {
+                        const playBtn = inDetail.querySelector('.play-now-btn');
+                        if (playBtn && this.isVisible(playBtn)) {
+                            this.setFocus(playBtn);
+                            return;
+                        }
                         const favBtn = inDetail.querySelector('#detail-fav-btn');
                         if (favBtn && this.isVisible(favBtn)) {
                             this.setFocus(favBtn);
@@ -379,6 +476,9 @@ class SpatialNavigation {
         } else if (region === 'items-panel') {
             if (activeSection) {
                 targetContainer = activeSection.querySelector('.categories-sidebar');
+                if (!targetContainer || !this.isVisible(targetContainer)) {
+                    targetContainer = document.getElementById('main-sidebar');
+                }
             }
         } else if (region === 'categories-panel') {
             targetContainer = document.getElementById('main-sidebar');
@@ -391,7 +491,18 @@ class SpatialNavigation {
         if (!container) return;
 
         // 1. Try Active Item
-        let target = container.querySelector(this.focusableSelector + '.active');
+        // Note: focusableSelector contains commas, so blind concatenation fails.
+        // We want to find an element that matches (any selector in focusableSelector) AND (.active).
+        // Since all interesting items are focusables, we can disable the optimization or filter properly.
+        // Simple way: Find all active elements within container, then check if they match focusable.
+        let target = null;
+        const actives = container.querySelectorAll('.active');
+        for (let el of actives) {
+            if (el.matches(this.focusableSelector) && this.isVisible(el)) {
+                target = el;
+                break;
+            }
+        }
 
         // 2. Try First Visible Item
         if (!target || target.offsetParent === null) {
@@ -410,7 +521,9 @@ class SpatialNavigation {
     }
 
     isVisible(el) {
-        return el && el.offsetParent !== null;
+        if (!el || el.offsetParent === null) return false;
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     }
 
     moveFocusGeometric(direction, scopeElement = null) {
@@ -441,8 +554,8 @@ class SpatialNavigation {
             let isValid = false;
 
             // Thresholds to favor alignment
-            const Y_ALIGN_THRESHOLD = rect.height / 2;
-            const X_ALIGN_THRESHOLD = rect.width / 2;
+            const Y_ALIGN_THRESHOLD = rect.height;
+            const X_ALIGN_THRESHOLD = rect.width;
 
             switch (direction) {
                 case 'right':
