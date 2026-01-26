@@ -242,8 +242,16 @@ class PlaylistManager {
             item.dataset.id = res.id;
             item.tabIndex = 0;
 
+            let statusText = res.isLoading ? 'Syncing...' : (res.status === 'synced' ? 'Synced' : (res.status === 'error' ? 'Error' : 'Not Synced'));
+
+            if (res.status === 'synced' && res.lastSynced) {
+                const date = new Date(res.lastSynced);
+                const dateStr = date.toLocaleDateString();
+                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                statusText = `Synced at ${dateStr} ${timeStr}`;
+            }
+
             const statusClass = res.status === 'synced' ? 'status-synced' : (res.status === 'error' ? 'status-error' : 'status-pending');
-            const statusText = res.isLoading ? 'Syncing...' : (res.status === 'synced' ? 'Synced' : (res.status === 'error' ? 'Error' : 'Not Synced'));
             const typeIcon = res.type === 'xtream' ? 'server' : 'list';
 
             item.innerHTML = `
@@ -253,9 +261,10 @@ class PlaylistManager {
                     <span class="status-text ${statusClass}">${statusText}</span>
                 </div>
                 <div class="resource-stats">
-                    <span class="stat"><i data-lucide="tv" style="width:14px; height:14px;"></i> ${res.stats?.channels || 0}</span>
-                    <span class="stat"><i data-lucide="film" style="width:14px; height:14px;"></i> ${res.stats?.movies || 0}</span>
-                    <span class="stat"><i data-lucide="clapperboard" style="width:14px; height:14px;"></i> ${res.stats?.series || 0}</span>
+                    <span class="stat" title="Channels"><i data-lucide="tv" style="width:14px; height:14px;"></i> ${(res.stats && res.stats.channels) || 0}</span>
+                    <span class="stat" title="Movies"><i data-lucide="film" style="width:14px; height:14px;"></i> ${(res.stats && res.stats.movies) || 0}</span>
+                    <span class="stat" title="Series"><i data-lucide="clapperboard" style="width:14px; height:14px;"></i> ${(res.stats && res.stats.series) || 0}</span>
+                    <span class="stat" title="Catchup"><i data-lucide="clock" style="width:14px; height:14px;"></i> ${(res.stats && res.stats.catchup) || 0}</span>
                 </div>
                 <div class="resource-actions">
                     <button class="btn btn-icon sync-btn focusable" title="Sync Now"><i data-lucide="refresh-cw"></i></button>
@@ -496,9 +505,9 @@ class PlaylistManager {
         if (resource.type === 'xtream') {
             tabs[1].classList.add('active');
             document.getElementById('tab-content-xtream').classList.add('active');
-            document.getElementById('xtream-host').value = resource.credentials?.host || '';
-            document.getElementById('xtream-user').value = resource.credentials?.username || '';
-            document.getElementById('xtream-pass').value = resource.credentials?.password || '';
+            document.getElementById('xtream-host').value = (resource.credentials && resource.credentials.host) || '';
+            document.getElementById('xtream-user').value = (resource.credentials && resource.credentials.username) || '';
+            document.getElementById('xtream-pass').value = (resource.credentials && resource.credentials.password) || '';
         } else {
             tabs[0].classList.add('active');
             document.getElementById('tab-content-m3u').classList.add('active');

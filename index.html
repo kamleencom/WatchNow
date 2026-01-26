@@ -25,9 +25,6 @@
 
 <body>
 
-	<!-- Background Ambient Glow -->
-	<div class="ambient-glow"></div>
-
 	<!-- License Verification Screen -->
 	<div id="license-screen" style="display: none;">
 		<div class="license-container">
@@ -106,7 +103,7 @@
 			<!-- Views -->
 
 			<!-- Home View -->
-			<section id="home" class="view-section">
+			<section id="home" class="view-section active">
 				<header class="section-header">
 					<h1>Home</h1>
 				</header>
@@ -171,7 +168,7 @@
 
 
 			<!-- Live TV View -->
-			<section id="live" class="view-section active">
+			<section id="live" class="view-section">
 				<header class="section-header">
 					<h1>Live TV</h1>
 					<div class="header-search-wrapper" style="display: flex; align-items: center;">
@@ -399,56 +396,14 @@
 		<div class="tv-static"></div>
 		<!-- Logo Watermark -->
 		<button id="close-player-btn" class="focusable" tabindex="0"><i data-lucide="x"></i></button>
-
-
-		<!-- Controls Gradient Overlay -->
-		<!-- <div class="player-controls-overlay"></div> -->
-
-		<!-- Next Channel Preview Card -->
-
 	</div>
 
 	<!-- Scripts -->
-	<style>
-		.modal-tabs {
-			display: flex;
-			/* gap: 10px; */
-			margin-bottom: 20px;
-			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-		}
-
-		.modal-tabs>*+* {
-			margin-left: 10px;
-		}
-
-		.modal-tab {
-			background: none;
-			border: none;
-			color: rgba(255, 255, 255, 0.6);
-			padding: 10px 15px;
-			cursor: pointer;
-			border-bottom: 2px solid transparent;
-			transition: all 0.2s;
-			font-size: 22px;
-		}
-
-		.modal-tab.active {
-			color: #fff;
-			border-bottom-color: var(--primary-color);
-		}
-
-		.tab-content {
-			display: none;
-		}
-
-		.tab-content.active {
-			display: block;
-		}
-	</style>
 	<script src="js/name-processor.js"></script>
 	<script src="js/parser.js"></script>
 	<script src="js/xtream-client.js"></script>
 	<script src="js/navigation.js"></script>
+	<script src="js/navigation-new.js"></script>
 
 	<script src="js/videojs-player.js"></script>
 	<script src="js/services/storage-service.js"></script>

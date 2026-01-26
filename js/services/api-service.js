@@ -59,7 +59,7 @@ class ApiService {
             url: url,
             active: true,
             status: 'pending',
-            stats: { channels: 0, movies: 0, series: 0 },
+            stats: { channels: 0, movies: 0, series: 0, catchup: 0 },
             isLoading: false,
             lastSynced: null
         };
@@ -100,7 +100,7 @@ class ApiService {
                     ...remote,
                     active: true,
                     status: 'pending',
-                    stats: { channels: 0, movies: 0, series: 0 },
+                    stats: { channels: 0, movies: 0, series: 0, catchup: 0 },
                     lastSynced: null,
                     isLoading: false
                 });

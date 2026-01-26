@@ -82,11 +82,6 @@ body {
     overflow: hidden;
 }
 
-/* Ambient Glow Background */
-.ambient-glow {
-    display: none;
-}
-
 /* Layout */
 #layout-container {
     display: flex;
@@ -317,11 +312,9 @@ body {
 
 /* Scrollable Content Areas */
 #home-content,
-#favorites-content,
 .settings-container {
     flex: 1;
     overflow-y: auto;
-    /* Ensure padding for scroll bar if needed, or maintain layout */
     padding-bottom: 20px;
 }
 
@@ -329,7 +322,6 @@ body {
 .content-rows {
     flex: 1;
     overflow: hidden;
-    /* content managed by nested-view-container */
     height: 100%;
 }
 
@@ -350,14 +342,12 @@ body {
 .catchup-program-item {
     display: flex;
     align-items: center;
-    /* gap: 15px; */
-    padding: 12px;
+    padding: 24px;
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
-    margin-bottom: 8px;
+    border-radius: 12px;
+    margin-bottom: 16px;
     cursor: pointer;
     transition: all 0.2s;
-    border: 1px solid transparent;
 }
 
 .catchup-program-item>*+* {
@@ -376,7 +366,7 @@ body {
     display: flex;
     flex-direction: column;
     min-width: 60px;
-    font-size: 12px;
+    font-size: 16px;
     color: rgba(255, 255, 255, 0.6);
     text-align: center;
 }
@@ -384,7 +374,8 @@ body {
 .c-time {
     font-weight: bold;
     color: #fff;
-    font-size: 14px;
+    font-size: 18px;
+    margin-bottom: 6px;
 }
 
 .catchup-details {
@@ -394,14 +385,15 @@ body {
 
 .c-title {
     font-weight: 500;
-    margin-bottom: 2px;
+    margin-bottom: 6px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 22px;
 }
 
 .c-desc {
-    font-size: 12px;
+    font-size: 16px;
     color: rgba(255, 255, 255, 0.5);
     display: -webkit-box;
     -webkit-line-clamp: 1;
@@ -1164,25 +1156,6 @@ h2 {
     overflow: hidden;
 }
 
-/* Animated Background */
-#player-overlay::before {
-    display: none;
-}
-
-@keyframes playerAmbient {
-
-    0%,
-    100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-
-    50% {
-        opacity: 0.7;
-        transform: scale(1.05);
-    }
-}
-
 /* Logo Watermark in Player */
 #player-overlay .player-logo-watermark {
     position: absolute;
@@ -1303,30 +1276,6 @@ video[src=''] {
 }
 
 /* --- Favorites Feature Styles --- */
-#favorites-content {
-    padding: 30px 30px;
-}
-
-/* Favorites Hint */
-.favorites-hint {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin: 0;
-}
-
-.key-hint {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-weight: 600;
-    font-size: 11px;
-    margin: 0 3px;
-}
-
-.key-hint.yellow {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    color: #000;
-}
 
 /* Favorites Section */
 .favorites-section {
@@ -1476,98 +1425,7 @@ video[src=''] {
     color: #10b981;
 }
 
-/* --- Next Channel Preview --- */
-.channel-preview-card {
-    position: absolute;
-    right: 50px;
-    width: 350px;
-    background: rgba(20, 20, 25, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
-    padding: 20px;
-    opacity: 0;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 250;
-    display: flex;
-    flex-direction: column;
-    bottom: 50px;
-    transform: translateY(120%);
-}
-
-.channel-preview-card>*+* {
-    margin-top: 10px;
-}
-
-/* Next Channel: swipe from bottom */
-.channel-preview-card.preview-next {
-    bottom: 50px;
-    top: auto;
-    transform: translateY(120%);
-}
-
-/* Previous Channel: swipe from top */
-.channel-preview-card.preview-prev {
-    top: 50px;
-    bottom: auto;
-    transform: translateY(-120%);
-}
-
-.channel-preview-card.visible {
-    transform: translateY(0);
-    opacity: 1;
-}
-
-.preview-label {
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--primary-color);
-    font-weight: 700;
-}
-
-.preview-content {
-    display: flex;
-    align-items: center;
-    /* gap: 15px; */
-}
-
-.preview-content>*+* {
-    margin-left: 15px;
-}
-
-.preview-info {
-    flex: 1;
-    overflow: hidden;
-}
-
-.preview-title {
-    font-size: 18px;
-    color: white;
-    margin: 0 0 5px 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.preview-meta {
-    font-size: 13px;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    /* gap: 6px; */
-}
-
-.preview-meta>*+* {
-    margin-left: 6px;
-}
-
 /* --- Lucide Icon Styling --- */
-/* .lucide {
-    width: 28px;
-    height: 28px;
-    stroke-width: 2;
-    vertical-align: middle;
-} */
 
 .inline-icon {
     width: 24px;
@@ -1602,44 +1460,6 @@ video[src=''] {
     opacity: 0.5;
 }
 
-/* Animations */
-.channel-switch-indicator {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    padding: 20px 40px;
-    border-radius: 50px;
-    color: white;
-    font-size: 24px;
-    font-weight: 600;
-    z-index: 300;
-    pointer-events: none;
-    animation: fadeZoom 1.5s ease forwards;
-}
-
-@keyframes fadeZoom {
-    0% {
-        opacity: 0;
-        transform: translate(-50%, -50%) scale(0.5);
-    }
-
-    20% {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1.1);
-    }
-
-    80% {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1);
-    }
-
-    100% {
-        opacity: 0;
-        transform: translate(-50%, -50%) scale(0.9);
-    }
-}
 
 /* Favorite Buckets */
 .favorite-bucket-btn {
@@ -1749,13 +1569,6 @@ video[src=''] {
     animation: slideRight 0.3s ease;
 }
 
-.nested-content-area {
-    flex: 1;
-    height: 100%;
-    overflow-y: auto;
-    position: relative;
-    background: rgba(0, 0, 0, 0.2);
-}
 
 @keyframes slideRight {
     from {
@@ -1865,7 +1678,7 @@ video[src=''] {
     overflow-y: auto;
     background: linear-gradient(to right, rgba(0, 0, 0, 0.4), transparent);
     overscroll-behavior: contain;
-    /* Stop scroll chaining */
+    position: relative;
 }
 
 /* --- Nested Player --- */
@@ -2217,8 +2030,16 @@ video[src=''] {
     max-width: 800px;
 }
 
-/* --- Movie Details Panel --- */
-.movie-detail-panel {
+/* --- Home Nested Panels --- */
+#home-bucket-panel,
+#home-favorites-panel {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* --- VOD Details Panel --- */
+.vod-detail-panel {
     width: 100%;
     height: 100%;
     display: flex;
@@ -2418,6 +2239,15 @@ video[src=''] {
     object-fit: cover;
 }
 
+.ep-duration-text {
+    align-self: flex-end;
+    font-size: 13px;
+    color: var(--primary-color);
+    font-weight: 600;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
 .episode-info-main {
     flex: 1;
     display: flex;
@@ -2611,7 +2441,7 @@ video[src=''] {
 }
 
 .channel-list-title {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 500;
     color: var(--text-primary);
     display: block;
@@ -2628,19 +2458,25 @@ video[src=''] {
 }
 
 .channel-badges>*+* {
-    margin-left: 4px;
+    margin-left: 8px;
 }
 
+
 .badge {
-    font-size: 9px;
+    font-size: 14px;
     font-weight: 700;
-    padding: 2px 5px;
+    padding: 6px 8px;
     border-radius: 3px;
     background: rgba(255, 255, 255, 0.15);
     color: #cbd5e1;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    line-height: 1;
+    line-height: 1.8;
+    display: flex;
+    align-content: center;
+    justify-content: center;
+    align-items: center;
+    height: 40px;
 }
 
 .badge-catchup {
@@ -2711,7 +2547,11 @@ video[src=''] {
 .weather-panel {
     display: flex;
     align-items: center;
-    gap: 30px;
+    /* gap: 30px; WebOS 6.0 fix */
+}
+
+.weather-panel>*:not(:last-child) {
+    margin-right: 30px;
 }
 
 .weather-icon-wrapper {
@@ -2732,7 +2572,12 @@ video[src=''] {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 20px;
+    align-items: center;
+    /* gap: 20px; WebOS 6.0 fix */
+}
+
+.weather-info>*:not(:last-child) {
+    margin-right: 20px;
 }
 
 .weather-text-details {
@@ -2785,4 +2630,73 @@ video[src=''] {
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 2px;
+}
+
+
+
+
+.modal-tabs {
+    display: flex;
+    /* gap: 10px; */
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-tabs>*+* {
+    margin-left: 10px;
+}
+
+.modal-tab {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 10px 15px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-size: 22px;
+}
+
+.modal-tab.active {
+    color: #fff;
+    border-bottom-color: var(--primary-color);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Episode Progress Tags */
+.ep-progress-tags {
+    display: flex;
+    margin-top: 5px;
+    /* gap: 8px; WebOS 6.0 fix */
+}
+
+.ep-progress-tags>*:not(:last-child) {
+    margin-right: 8px;
+}
+
+.ep-tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.tag-watched {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.tag-continue {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
 }

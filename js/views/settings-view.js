@@ -9,7 +9,7 @@ function setupSettings() {
     // Reset Button
     const resetBtn = document.getElementById('reset-app-btn');
     if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
+        const resetAction = () => {
             ConfirmationModal.show({
                 title: 'Reset App?',
                 message: 'Are you sure you want to remove all playlists and reset the app?',
@@ -21,7 +21,18 @@ function setupSettings() {
                     window.location.reload();
                 }
             });
+        };
+
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resetAction();
         });
+
+        // Also handle click on the focusable parent container for TV remote support
+        const focusableParent = resetBtn.closest('.setting-item.focusable');
+        if (focusableParent) {
+            focusableParent.addEventListener('click', resetAction);
+        }
     }
 
     loadDeviceInfo();
@@ -45,7 +56,8 @@ function loadDeviceInfo() {
         }
     }
 
-    if (typeof webOS !== 'undefined' && webOS.service) {
+    // Only attempt Luna service requests if PalmServiceBridge exists (indicates real device or emulator)
+    if (typeof webOS !== 'undefined' && webOS.service && window.PalmServiceBridge) {
         try {
             webOS.service.request('luna://com.webos.service.tv.systemproperty', {
                 method: 'getSystemInfo',
@@ -96,10 +108,10 @@ function loadDeviceInfo() {
             console.error("webOS detailed info request error", e);
         }
     } else {
-        // Browser fallback
-        if (modelEl) modelEl.textContent = 'Browser';
-        if (sdkEl) sdkEl.textContent = navigator.userAgent.substring(0, 30) + '...';
-        if (nameEl) nameEl.textContent = 'Development Environment';
+        // Browser fallback or bridge missing
+        if (modelEl && modelEl.textContent === '-') modelEl.textContent = 'Browser';
+        if (sdkEl && sdkEl.textContent === '-') sdkEl.textContent = 'Web Engine';
+        if (nameEl && nameEl.textContent === '-') nameEl.textContent = 'Development Environment';
     }
 }
 

@@ -4,7 +4,7 @@
  */
 
 async function handleNestedMediaClick(item, type, cardElement, options = {}) {
-    const { startTime = 0, season = null, episode = null, parentContainer = null, onBack = null } = options;
+    const { startTime = 0, season = null, episode = null, parentContainer = null, onBack = null, panelId = null } = options;
 
     let contentArea;
     if (parentContainer) {
@@ -19,7 +19,7 @@ async function handleNestedMediaClick(item, type, cardElement, options = {}) {
     }
     const existingGrid = contentArea.querySelector('.nested-media-grid');
 
-    let panel = contentArea.querySelector('.movie-detail-panel');
+    let panel = contentArea.querySelector('.vod-detail-panel');
 
     // Resource Lookup
     const resource = state.resources.find(r => r.name === item.source);
@@ -51,7 +51,8 @@ async function handleNestedMediaClick(item, type, cardElement, options = {}) {
 
     if (!panel) {
         panel = document.createElement('div');
-        panel.className = 'movie-detail-panel';
+        panel.className = 'vod-detail-panel';
+        if (panelId) panel.id = panelId;
         contentArea.appendChild(panel);
     }
 
@@ -64,8 +65,8 @@ async function handleNestedMediaClick(item, type, cardElement, options = {}) {
 
     const favoriteType = type;
     const isSeries = type === 'series';
-    const colClass = isSeries ? 'detail-column series-mode' : 'detail-column';
-    const rowClass = isSeries ? 'detail-content-row series-mode-row' : 'detail-content-row';
+    const colClass = isSeries ? 'detail-column series-mode' : 'detail-column movies-mode';
+    const rowClass = isSeries ? 'detail-content-row series-mode-row' : 'detail-content-row movies-mode-row';
 
     panel.innerHTML = `
         <div class="split-detail-view">
@@ -108,16 +109,18 @@ async function handleNestedMediaClick(item, type, cardElement, options = {}) {
                      </div>
                  </div>
                  ` : `
-                 <div class="player-column">
-                    <div id="nested-player-container">
-                         <div class="tv-static"></div>
-                         <img src="assets/ok_logo.svg" alt="" class="player-logo-watermark">
-                         <div class="placeholder-icon">
-                             <i data-lucide="play-circle" style="width:50px; height:50px; opacity:0.5; margin-bottom:10px;"></i>
-                             <div style="color: rgba(255,255,255,0.4);">Click 'Play Now' to start</div>
-                         </div>
-                    </div>
-                    <div id="track-info-container" class="track-info-panel" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 13px; color: #ccc; display: none;"></div>
+                 <div class="main-player-section">
+                     <div class="player-column">
+                        <div id="nested-player-container">
+                             <div class="tv-static"></div>
+                             <img src="assets/ok_logo.svg" alt="" class="player-logo-watermark">
+                             <div class="placeholder-icon">
+                                 <i data-lucide="play-circle" style="width:50px; height:50px; opacity:0.5; margin-bottom:10px;"></i>
+                                 <div style="color: rgba(255,255,255,0.4);">Click 'Play Now' to start</div>
+                             </div>
+                        </div>
+                        <div id="track-info-container" class="track-info-panel" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 13px; color: #ccc; display: none;"></div>
+                     </div>
                  </div>
                  `}
              </div>
@@ -129,15 +132,20 @@ async function handleNestedMediaClick(item, type, cardElement, options = {}) {
         panel.remove();
 
         if (onBack) {
+            // onBack handles focus restoration
             onBack();
-        } else if (existingGrid) {
-            existingGrid.style.display = '';
-        }
+        } else {
+            // No onBack callback, restore manually
+            if (existingGrid) {
+                existingGrid.style.display = '';
+            }
 
-        if (cardElement && typeof nav !== 'undefined') {
-            setTimeout(() => {
-                nav.setFocus(cardElement);
-            }, 50);
+            // Only focus cardElement if no onBack (since onBack handles its own focus)
+            if (cardElement && typeof nav !== 'undefined') {
+                setTimeout(() => {
+                    nav.setFocus(cardElement);
+                }, 50);
+            }
         }
     });
 
@@ -192,13 +200,58 @@ async function handleNestedMediaClick(item, type, cardElement, options = {}) {
                 const epItem = document.createElement('div');
                 epItem.className = 'episode-card-vertical focusable';
                 epItem.tabIndex = 0;
+                const epImg = (ep.info && ep.info.movie_image) || (ep.info && ep.info.cover) || '';
+                const duration = (ep.info && ep.info.duration) || '';
+
+                let displayDuration = duration;
+                if (displayDuration && typeof displayDuration === 'string' && displayDuration.includes(':')) {
+                    const parts = displayDuration.split(':');
+                    if (parts.length === 3 && parseInt(parts[0]) === 0) {
+                        displayDuration = `${parts[1]}:${parts[2]}`;
+                    }
+                }
+
+                const epUrl = `${resource.credentials.host}/series/${resource.credentials.username}/${resource.credentials.password}/${ep.id}.${ep.container_extension || 'mp4'}`;
+                let progressTag = '';
+                try {
+                    const progressRaw = localStorage.getItem('watchnow_watch_progress');
+                    if (progressRaw) {
+                        const progress = JSON.parse(progressRaw);
+                        if (progress[epUrl]) {
+                            const p = progress[epUrl];
+                            if (p.duration && p.time) {
+                                const remaining = p.duration - p.time;
+                                const watched = p.time;
+
+                                // Logic matching Home View Continue Watching:
+                                // - Must have watched at least 120s (2 mins)
+                                // - Continue Watching IF remaining >= 300s (5 mins)
+                                // - Watched IF remaining < 300s (and meets the watched threshold)
+
+                                if (watched >= 120) {
+                                    if (remaining < 300) {
+                                        progressTag = '<div class="ep-progress-tags"><div class="ep-tag tag-watched">Watched</div></div>';
+                                    } else {
+                                        progressTag = '<div class="ep-progress-tags"><div class="ep-tag tag-continue">Continue Watching</div></div>';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e) { }
+
                 epItem.innerHTML = `
+                    <div class="episode-thumbnail">
+                         <img src="${epImg}" onerror="this.style.display='none'">
+                    </div>
                     <div class="episode-info-main">
                         <div class="ep-number-title">
                             <span class="ep-num-badge">E${ep.episode_num}</span>
                             <span class="ep-title-text">${ep.title}</span>
                         </div>
-                        ${ep.info?.plot ? `<div class="ep-plot-preview">${ep.info.plot}</div>` : ''}
+                        ${progressTag}
+                        ${displayDuration ? `<div class="ep-duration-text">${displayDuration}</div>` : ''}
+                        ${(ep.info && ep.info.plot) ? `<div class="ep-plot-preview">${ep.info.plot}</div>` : ''}
                     </div>
                 `;
 
@@ -277,7 +330,7 @@ async function handleNestedMediaClick(item, type, cardElement, options = {}) {
         // Movie Play Button
         const playBtn = panel.querySelector('.play-now-btn');
         if (playBtn) {
-            const movieStreamUrl = `${resource?.credentials?.host || ''}/movie/${resource?.credentials?.username || ''}/${resource?.credentials?.password || ''}/${item.id}.${ext || 'mp4'}`;
+            const movieStreamUrl = `${(resource && resource.credentials && resource.credentials.host) || ''}/movie/${(resource && resource.credentials && resource.credentials.username) || ''}/${(resource && resource.credentials && resource.credentials.password) || ''}/${item.id}.${ext || 'mp4'}`;
             const startPos = startTime || 0;
 
             playBtn.addEventListener('click', () => {

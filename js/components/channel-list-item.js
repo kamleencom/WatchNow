@@ -104,7 +104,7 @@ class ChannelListItem {
         let badgesHtml = '<div class="channel-badges">';
         item.badges.forEach(b => {
             if (b === 'CATCHUP') {
-                badgesHtml += '<span class="badge badge-catchup" title="Catchup Available"><i data-lucide="clock" style="width:10px; height:10px;"></i></span>';
+                badgesHtml += '<span class="badge badge-catchup" title="Catchup Available"><i data-lucide="clock" style="width:18px; height:18px;"></i></span>';
             } else {
                 badgesHtml += `<span class="badge">${b}</span>`;
             }

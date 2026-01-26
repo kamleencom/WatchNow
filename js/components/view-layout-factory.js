@@ -27,11 +27,13 @@ class ViewLayoutFactory {
             showCloseBtn = true,
             showCatchupList = false,
             includePlayer = true,
-            placeholderText = 'Select a channel to play'
+            placeholderText = 'Select a channel to play',
+            containerId = null
         } = options;
 
         // Create main container
         const container = document.createElement('div');
+        if (containerId) container.id = containerId;
         container.className = 'nested-view-container';
         container.style.height = '100%';
         container.style.minHeight = '600px';
@@ -120,11 +122,13 @@ class ViewLayoutFactory {
             contentId = 'content-area',
             headerTitle = 'Items',
             closeBtnId = null,
-            gridId = 'media-grid'
+            gridId = 'media-grid',
+            containerId = null
         } = options;
 
         // Create main container
         const container = document.createElement('div');
+        if (containerId) container.id = containerId;
         container.className = 'nested-view-container';
         container.style.height = '100%';
         container.style.minHeight = '600px';
@@ -136,8 +140,10 @@ class ViewLayoutFactory {
         contentArea.className = 'nested-content-area';
         contentArea.style.width = '100%';
         contentArea.style.height = '100%';
-        contentArea.style.overflowY = 'auto';
-        contentArea.style.padding = '40px';
+        contentArea.style.overflow = 'hidden';
+        contentArea.style.display = 'flex';
+        contentArea.style.flexDirection = 'column';
+        contentArea.style.padding = '0';
 
         // Create header row
         const headerRow = document.createElement('div');
@@ -145,6 +151,8 @@ class ViewLayoutFactory {
         headerRow.style.alignItems = 'center';
         headerRow.style.justifyContent = 'space-between';
         headerRow.style.marginBottom = '30px';
+        headerRow.style.flexShrink = '0';
+        headerRow.style.padding = '40px 40px 0 40px';
 
         const titleEl = document.createElement('h2');
         titleEl.className = 'section-title';
@@ -166,6 +174,10 @@ class ViewLayoutFactory {
         const gridContainer = document.createElement('div');
         gridContainer.id = gridId;
         gridContainer.className = 'favorites-grid nested-media-grid';
+        gridContainer.style.flex = '1';
+        gridContainer.style.overflowY = 'auto';
+        gridContainer.style.minHeight = '0';
+        gridContainer.style.padding = '10px 40px 40px 40px';
         contentArea.appendChild(gridContainer);
 
         // Assemble

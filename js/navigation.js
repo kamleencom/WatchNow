@@ -228,7 +228,7 @@ class SpatialNavigation {
 
             if (inNestedGrid) {
                 // Special case for Movie/Series Detail Panel: handle Left to Column logic
-                const inDetail = this.currentFocus.closest('.movie-detail-panel');
+                const inDetail = this.currentFocus.closest('.vod-detail-panel');
                 if (inDetail && direction === 'left' && !this.currentFocus.closest('.detail-column')) {
                     // 1. Episode -> Favorite Button
                     if (this.currentFocus.classList.contains('episode-card-vertical')) {

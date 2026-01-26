@@ -37,28 +37,41 @@ class ConfirmationModalComponent {
 
     /**
      * Shows the confirmation modal
-     * @param {string} title 
-     * @param {string} message 
-     * @param {string} [confirmText='Delete'] - Text for the confirm button
-     * @param {string} [confirmClass='btn-danger'] - Class for the confirm button (e.g. btn-danger, btn-primary)
-     * @returns {Promise<boolean>}
+     * @param {Object} options - Modal options
      */
-    show(title, message, confirmText = 'Delete', confirmClass = 'btn-danger') {
+    show(options = {}) {
+        const {
+            title = 'Confirm Action',
+            message = 'Are you sure?',
+            confirmText = 'Delete',
+            confirmClass = 'btn-danger',
+            onConfirm = null,
+            onCancel = null
+        } = options;
+
         const modal = document.getElementById('confirmation-modal');
         const titleEl = document.getElementById('confirmation-modal-title');
         const msgEl = document.getElementById('confirmation-modal-message');
         const confirmBtn = document.getElementById('confirm-action-btn');
 
-        titleEl.textContent = title || 'Confirm Action';
-        msgEl.textContent = message || 'Are you sure?';
+        titleEl.textContent = title;
+        msgEl.textContent = message;
 
         // Update button appearance
         confirmBtn.textContent = confirmText;
-        // Reset classes and add new ones
         confirmBtn.className = 'btn focusable ' + confirmClass;
 
+        // Store callbacks
+        this.onConfirm = onConfirm;
+        this.onCancel = onCancel;
+
         modal.classList.add('visible');
-        confirmBtn.focus();
+
+        if (window.nav && typeof nav.setFocus === 'function') {
+            nav.setFocus(confirmBtn);
+        } else {
+            confirmBtn.focus();
+        }
 
         return new Promise((resolve) => {
             this.resolvePromise = resolve;
@@ -67,13 +80,25 @@ class ConfirmationModalComponent {
 
     close(result) {
         const modal = document.getElementById('confirmation-modal');
+        if (!modal) return;
+
         modal.classList.remove('visible');
+
+        if (result && this.onConfirm) {
+            this.onConfirm();
+        } else if (!result && this.onCancel) {
+            this.onCancel();
+        }
+
         if (this.resolvePromise) {
             this.resolvePromise(result);
             this.resolvePromise = null;
         }
+
+        this.onConfirm = null;
+        this.onCancel = null;
     }
 }
 
 // Export global instance
-const ConfirmationModal = new ConfirmationModalComponent();
+window.ConfirmationModal = new ConfirmationModalComponent();

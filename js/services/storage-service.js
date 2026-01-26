@@ -42,7 +42,7 @@ class StorageService {
             // Reset non-persistent state
             resources.forEach(r => {
                 r.isLoading = false;
-                r.stats = r.stats || { channels: 0, movies: 0, series: 0 };
+                r.stats = r.stats || { channels: 0, movies: 0, series: 0, catchup: 0 };
                 r.lastSynced = r.lastSynced || null;
                 r.status = r.active ? 'queued' : 'disabled';
                 r.abortController = null; // Ensure this is clear

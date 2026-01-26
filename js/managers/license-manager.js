@@ -68,7 +68,7 @@ class LicenseManager {
             }
 
             // WebOS Service Call
-            if (window.webOS && window.webOS.service) {
+            if (window.webOS && window.webOS.service && window.PalmServiceBridge) {
                 webOS.service.request("luna://com.webos.service.sm", {
                     method: "deviceid/getIDs",
                     parameters: { "idType": ["LGUDID"] },

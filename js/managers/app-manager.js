@@ -8,7 +8,15 @@ class AppManager {
 
     async init() {
         // Global Instances
-        window.nav = new SpatialNavigation();
+        window.nav = new Navigation();
+
+        // Initialize state as early as possible to avoid race conditions with remote sync
+        if (window.playlistManager) {
+            playlistManager.init();
+        }
+        if (window.favoritesManager) {
+            favoritesManager.load();
+        }
 
         // License Check
         const okpId = await licenseManager.initializeOkpId();
@@ -35,22 +43,16 @@ class AppManager {
     }
 
     async startApp() {
-        // Services
-        if (window.playlistManager) {
-            playlistManager.init();
-        }
-
-        // Favorites
-        if (window.favoritesManager) {
-            favoritesManager.load();
-        }
-
         // Settings
         if (window.settingsManager) {
             settingsManager.load();
         } else {
             loadAppSettings();
         }
+
+        // Initialize Settings View & Handlers
+        if (typeof setupSettings === 'function') setupSettings();
+        if (typeof setupFavoritesKeyHandler === 'function') setupFavoritesKeyHandler();
 
         // Setup UI Helpers
         createToastElement();

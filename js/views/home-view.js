@@ -4,7 +4,30 @@
  * and favorite channels/buckets player views.
  */
 
+
 function renderHomeView() {
+    // Check if any detail panel is currently open
+    const homeContent = document.getElementById('home-content');
+    const isDetailOpen = homeContent && homeContent.querySelector('.vod-detail-panel, #home-favorites-panel, #home-bucket-panel');
+
+    // Manage Welcome Section Visibility
+    const welcomeSection = document.getElementById('welcome-section');
+    if (welcomeSection) {
+        if (isDetailOpen) {
+            welcomeSection.style.display = 'none';
+        } else {
+            // Restore visibility if it was hidden
+            if (welcomeSection.style.display === 'none') {
+                welcomeSection.style.display = '';
+            }
+        }
+    }
+
+    // Sync state favorites first
+    if (typeof favoritesManager !== 'undefined') {
+        state.favorites = favoritesManager.getAll();
+    }
+
     const container = document.getElementById('continue-watching-carousel');
     const section = document.getElementById('continue-watching-section');
     if (!container || !section) return;
@@ -32,80 +55,88 @@ function renderHomeView() {
     if (items.length === 0) {
         section.style.display = 'none';
         container.innerHTML = '';
-        return;
-    }
-
-    section.style.display = 'block';
-    container.innerHTML = '';
-
-    container.style.display = 'flex';
-    container.style.overflowX = 'auto';
-    container.style.flexWrap = 'nowrap';
-    container.style.gap = '24px';
-    container.style.paddingBottom = '30px';
-
-    items.forEach(prog => {
-        const item = prog.item || {
-            title: prog.title || 'Unknown',
-            url: prog.url,
-            logo: prog.logo
-        };
-
-        const type = prog.type || 'movies';
-        const percent = Math.min(100, Math.max(0, (prog.time / prog.duration) * 100));
-
-        // Build clickItem for handleNestedMediaClick
-        // The progress data structure has: prog.item = playItem which contains item = { seriesId, seriesTitle, source }
-        const clickItem = { ...item };
-
-        // For series: extract seriesId from the nested item object (prog.item.item)
-        // This is because playContent() stores metadata like: { type, item: { seriesId, seriesTitle, source } }
-        const nestedItem = prog.item?.item;
-
-        if (prog.type === 'series' && nestedItem && nestedItem.seriesId) {
-            clickItem.id = nestedItem.seriesId;
-            clickItem.title = nestedItem.seriesTitle || clickItem.title;
-            clickItem.source = nestedItem.source;
-        } else if (prog.type === 'movies') {
-            // For movies: extract movieId from nested item
-            if (nestedItem && nestedItem.movieId) clickItem.id = nestedItem.movieId;
-            if (nestedItem && nestedItem.source) clickItem.source = nestedItem.source;
+    } else {
+        // Only show if no detail panel is open
+        if (!isDetailOpen) {
+            section.style.display = 'block';
         }
 
-        const wrapper = MediaCard.create(item, type, {
-            showProgress: true,
-            progressPercent: percent,
-            progressTime: prog.time,
-            progressDuration: prog.duration,
-            continueWatchingMeta: {
-                season: prog.season,
-                episode: prog.episode
-            },
-            onClick: (item, type, card, meta) => {
-                const homeContent = document.getElementById('home-content');
-                // For series: open in series mode (no auto-play), just pre-select season
-                // For movies: resume from last position
-                const isSeries = type === 'series';
-                handleNestedMediaClick(clickItem, type, card, {
-                    season: isSeries ? prog.season : null,
-                    episode: null, // Don't auto-play episode, let user choose
-                    startTime: isSeries ? 0 : prog.time, // Only resume for movies
-                    parentContainer: homeContent,
-                    onBack: () => restoreHomeView(homeContent)
-                });
+        container.innerHTML = '';
+
+        container.style.display = 'flex';
+        container.style.overflowX = 'auto';
+        container.style.flexWrap = 'nowrap';
+        container.style.gap = '24px';
+        container.style.paddingBottom = '30px';
+
+        items.forEach(prog => {
+            const item = prog.item || {
+                title: prog.title || 'Unknown',
+                url: prog.url,
+                logo: prog.logo
+            };
+
+            const type = prog.type || 'movies';
+            const percent = Math.min(100, Math.max(0, (prog.time / prog.duration) * 100));
+
+            // Build clickItem for handleNestedMediaClick
+            // The progress data structure has: prog.item = playItem which contains item = { seriesId, seriesTitle, source }
+            const clickItem = { ...item };
+
+            // For series: extract seriesId from the nested item object (prog.item.item)
+            // This is because playContent() stores metadata like: { type, item: { seriesId, seriesTitle, source } }
+            const nestedItem = prog.item && prog.item.item;
+
+            if (prog.type === 'series' && nestedItem && nestedItem.seriesId) {
+                clickItem.id = nestedItem.seriesId;
+                clickItem.title = nestedItem.seriesTitle || clickItem.title;
+                clickItem.source = nestedItem.source;
+            } else if (prog.type === 'movies') {
+                // For movies: extract movieId from nested item
+                if (nestedItem && nestedItem.movieId) clickItem.id = nestedItem.movieId;
+                if (nestedItem && nestedItem.source) clickItem.source = nestedItem.source;
             }
+
+            const wrapper = MediaCard.create(item, type, {
+                showProgress: true,
+                progressPercent: percent,
+                progressTime: prog.time,
+                progressDuration: prog.duration,
+                continueWatchingMeta: {
+                    season: prog.season,
+                    episode: prog.episode
+                },
+                onClick: (item, type, card, meta) => {
+                    const homeContent = document.getElementById('home-content');
+                    // Store the clicked item's URL for focus restoration
+                    const cardUrl = item.url || clickItem.url;
+                    // For series: open in series mode (no auto-play), just pre-select season
+                    // For movies: resume from last position
+                    const isSeries = type === 'series';
+                    handleNestedMediaClick(clickItem, type, card, {
+                        season: isSeries ? prog.season : null,
+                        episode: null, // Don't auto-play episode, let user choose
+                        startTime: isSeries ? 0 : prog.time, // Only resume for movies
+                        parentContainer: homeContent,
+                        onBack: () => restoreHomeView(homeContent, 'continue-watching-carousel', cardUrl),
+                        panelId: 'direct-home'
+                    });
+                }
+            });
+
+            container.appendChild(wrapper);
         });
 
-        container.appendChild(wrapper);
-    });
+        if (window.lucide) lucide.createIcons({ root: container });
+    }
 
-    if (window.lucide) lucide.createIcons({ root: container });
+    const showOptions = { shouldShow: !isDetailOpen };
 
     // Render other carousels
-    renderCarousel('home-fav-channels-section', 'home-fav-channels-carousel', state.favorites.channels || [], 'live');
-    renderCarousel('home-fav-buckets-section', 'home-fav-buckets-carousel', state.favorites.buckets || [], 'bucket');
-    renderCarousel('home-fav-movies-section', 'home-fav-movies-carousel', state.favorites.movies || [], 'movies');
-    renderCarousel('home-fav-series-section', 'home-fav-series-carousel', state.favorites.series || [], 'series');
+    renderCarousel('home-fav-channels-section', 'home-fav-channels-carousel', state.favorites.channels || [], 'live', showOptions);
+    renderCarousel('home-fav-buckets-section', 'home-fav-buckets-carousel', state.favorites.buckets || [], 'bucket', showOptions);
+    renderCarousel('home-fav-movies-section', 'home-fav-movies-carousel', state.favorites.movies || [], 'movies', showOptions);
+    renderCarousel('home-fav-series-section', 'home-fav-series-carousel', state.favorites.series || [], 'series', showOptions);
 }
 
 function renderCarousel(sectionId, containerId, items, type, options = {}) {
@@ -115,7 +146,10 @@ function renderCarousel(sectionId, containerId, items, type, options = {}) {
     if (!section || !container) return;
 
     if (items.length > 0) {
-        section.style.display = 'block';
+        if (options.shouldShow !== false) {
+            section.style.display = 'block';
+        }
+
         container.innerHTML = '';
 
         container.style.display = 'flex';
@@ -160,9 +194,11 @@ function renderCarousel(sectionId, containerId, items, type, options = {}) {
 
                         card.addEventListener('click', () => {
                             const homeContent = document.getElementById('home-content');
+                            const cardUrl = item.url; // Store URL for focus restoration
                             handleNestedMediaClick(item, type, card, {
                                 parentContainer: homeContent,
-                                onBack: () => restoreHomeView(homeContent, containerId)
+                                onBack: () => restoreHomeView(homeContent, containerId, cardUrl),
+                                panelId: 'direct-home'
                             });
                         });
 
@@ -183,15 +219,35 @@ function renderCarousel(sectionId, containerId, items, type, options = {}) {
     }
 }
 
-function restoreHomeView(homeContent, focusContainerId = 'continue-watching-carousel') {
+function restoreHomeView(homeContent, focusContainerId = 'continue-watching-carousel', cardUrl = null) {
     if (homeContent) {
-        Array.from(homeContent.children).forEach(c => c.style.display = '');
-        const existingPanel = homeContent.querySelector('.movie-detail-panel');
-        if (existingPanel) existingPanel.remove();
+        const existingPanel = homeContent.querySelector('.vod-detail-panel');
         renderHomeView();
         const newContainer = document.getElementById(focusContainerId);
-        if (newContainer && newContainer.firstChild && typeof nav !== 'undefined') {
-            nav.setFocus(newContainer.firstChild);
+        if (newContainer && typeof nav !== 'undefined') {
+            let targetCard = null;
+
+            // If cardUrl is provided, find the specific card with that URL
+            if (cardUrl) {
+                // For continue watching, we need to find the focusable card within wrappers
+                const allCards = newContainer.querySelectorAll('.card[data-url], .card.focusable');
+                for (const card of allCards) {
+                    const dataUrl = card.dataset.url;
+                    if (dataUrl === cardUrl) {
+                        targetCard = card;
+                        break;
+                    }
+                }
+            }
+
+            // Fallback to first focusable element
+            if (!targetCard) {
+                targetCard = newContainer.querySelector('.card.focusable, .focusable');
+            }
+
+            if (targetCard) {
+                nav.setFocus(targetCard);
+            }
         }
     }
 }
@@ -331,6 +387,13 @@ function openFavoriteBucketView(bucket) {
     let layout;
     let closeBtn;
 
+    // Determine Container ID
+    let containerId = 'bucket-nested-container';
+    if (bucketType === 'channels' || bucketType === 'live') containerId = 'live-bucket';
+    else if (bucketType === 'movies') containerId = 'movies-bucket';
+    else if (bucketType === 'series') containerId = 'series-bucket';
+    else if (bucketType === 'catchup') containerId = 'catch-up-bucket';
+
     if (bucketType === 'channels') {
         // Use sidebar + player layout for channels
         layout = ViewLayoutFactory.createSidebarWithPlayer({
@@ -339,7 +402,8 @@ function openFavoriteBucketView(bucket) {
             headerTitle: bucketName,
             closeBtnId: 'close-bucket-btn',
             showCatchupList: false,
-            placeholderText: 'Select a channel to play'
+            placeholderText: 'Select a channel to play',
+            containerId: containerId
         });
 
         panel.appendChild(layout.container);
@@ -376,16 +440,30 @@ function openFavoriteBucketView(bucket) {
             contentId: 'bucket-content-area',
             headerTitle: bucketName,
             closeBtnId: 'close-bucket-btn',
-            gridId: 'bucket-grid'
+            gridId: 'bucket-grid',
+            containerId: containerId
         });
 
         panel.appendChild(layout.container);
         closeBtn = layout.closeBtn;
 
         // Populate grid
-        items.forEach((item) => {
-            const card = MediaCard.create(item, bucketType);
+        items.forEach((item, index) => {
+            const card = MediaCard.create(item, bucketType, {
+                onClick: (item, type, card) => {
+                    handleNestedMediaClick(item, type, card, {
+                        panelId: 'bucket-view'
+                    });
+                }
+            });
             layout.gridContainer.appendChild(card);
+
+            if (index === 0) {
+                setTimeout(() => {
+                    card.focus();
+                    if (typeof nav !== 'undefined') nav.setFocus(card);
+                }, 100);
+            }
         });
 
         if (window.lucide) lucide.createIcons({ root: layout.gridContainer });
